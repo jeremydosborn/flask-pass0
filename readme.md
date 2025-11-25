@@ -1,29 +1,40 @@
-# Flask-Pass0
+---
 
-A passwordless authentication extension for Flask applications.
+# **Flask-Pass0 (v1.0)**
 
-## Features
+Passwordless authentication for Flask using secure, time-limited magic links.
 
-- Magic link authentication - no passwords to remember or manage
-- Database agnostic - works with any database through a simple adapter interface
-- Secure by design - follows security best practices for authentication
-- Easy to integrate - drop-in authentication for Flask applications
-- Mobile-friendly - responsive design works on all devices
-- Extensible - designed to support additional authentication methods in the future
+Flask-Pass0 provides a simple, clean interface for passwordless login flows while keeping your Flask application lightweight and easy to maintain. This is **Version 1.0**, the initial public release. Review the security notes below before using in production.
 
-## Installation
+---
+
+## **Features**
+
+* Magic link authentication (no passwords required)
+* Database-agnostic design via pluggable storage adapters
+* Easy integration through a self-contained Flask Blueprint
+* Works out of the box with an in-memory dev store
+* Optional SQLAlchemy adapter for database-backed storage
+* Mobile-friendly templates
+* Extensible design for additional login methods (e.g., passkeys)
+
+---
+
+## **Installation**
 
 ```bash
 pip install flask-pass0
 ```
 
-For SQLAlchemy database support:
+For SQLAlchemy support:
 
 ```bash
 pip install flask-pass0[sqlalchemy]
 ```
 
-## Quickstart
+---
+
+## **Quickstart**
 
 ```python
 from flask import Flask, render_template
@@ -31,21 +42,11 @@ from flask_pass0 import Pass0
 from flask_pass0.utils import login_required
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key'  # Required for sessions
-app.config['PASS0_DEV_MODE'] = True  # Set to False in production
+app.config['SECRET_KEY'] = 'your-secret-key'
+app.config['PASS0_DEV_MODE'] = True  # Shows magic link directly (dev only)
 
-# For email sending in production
-app.config['MAIL_SERVER'] = 'smtp.example.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'your-email@example.com'
-app.config['MAIL_PASSWORD'] = 'your-password'
-app.config['MAIL_DEFAULT_SENDER'] = 'no-reply@example.com'
-
-# Initialize Pass0
 pass0 = Pass0(app)
 
-# Create a protected route
 @app.route('/')
 @login_required
 def index():
@@ -55,22 +56,29 @@ if __name__ == '__main__':
     app.run(debug=True)
 ```
 
-## Configuration Options
+---
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `PASS0_TOKEN_EXPIRY` | `10` | Magic link token expiry time in minutes |
-| `PASS0_REDIRECT_URL` | `/` | Default URL to redirect to after login |
-| `PASS0_LOGIN_URL` | `/auth/login` | Login page URL |
-| `PASS0_DEV_MODE` | `True` | Development mode - shows magic links instead of sending emails |
-| `PASS0_SESSION_DURATION` | `86400` | Session duration in seconds (24 hours) |
-| `PASS0_APP_NAME` | `Your Application` | Application name to use in emails |
+## **Configuration Options**
 
-## Database Integration
+| Option                   | Default              | Description                                |
+| ------------------------ | -------------------- | ------------------------------------------ |
+| `PASS0_TOKEN_EXPIRY`     | `10`                 | Magic link token expiry (minutes)          |
+| `PASS0_REDIRECT_URL`     | `/`                  | Redirect after login                       |
+| `PASS0_LOGIN_URL`        | `/auth/login`        | Login page URL                             |
+| `PASS0_DEV_MODE`         | `True`               | Shows magic links instead of emailing them |
+| `PASS0_SESSION_DURATION` | `86400`              | Session lifetime in seconds                |
+| `PASS0_APP_NAME`         | `"Your Application"` | Display name for emails (future)           |
 
-Flask-Pass0 comes with built-in memory storage (for development) and SQLAlchemy integration.
+---
 
-### Using SQLAlchemy
+## **Database Integration**
+
+Flask-Pass0 includes:
+
+* a built-in in-memory adapter for development
+* an SQLAlchemy storage adapter for real applications
+
+### **Using SQLAlchemy**
 
 ```python
 from flask import Flask
@@ -79,61 +87,64 @@ from flask_pass0.storage import SQLAlchemyStorageAdapter
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key'
+app.config['SECRET_KEY'] = 'secret'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Create custom user model (optional)
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
-    name = db.Column(db.String(255))
-    is_active = db.Column(db.Boolean, default=True)
-    
+
     def to_dict(self):
-        return {
-            'id': self.id,
-            'email': self.email,
-            'name': self.name,
-            'is_active': self.is_active
-        }
+        return {"id": self.id, "email": self.email}
 
-# Initialize storage adapter with custom model
 storage = SQLAlchemyStorageAdapter(user_model=User, session=db.session)
-
-# Initialize Pass0 with storage adapter
 pass0 = Pass0(app, storage_adapter=storage)
 ```
 
-### Custom Storage Adapters
+---
 
-You can create your own storage adapter by implementing the `StorageAdapter` interface:
+## **Custom Storage Adapters**
+
+Create your own adapter by implementing the StorageAdapter interface:
 
 ```python
 from flask_pass0.storage import StorageAdapter
 
-class MyStorageAdapter(StorageAdapter):
-    # Implement required methods
+class MyStorage(StorageAdapter):
     def get_user_by_email(self, email):
-        # ...
-    
+        ...
     def get_user_by_id(self, user_id):
-        # ...
-    
-    # And so on...
+        ...
 ```
 
-## Future Roadmap
+---
 
-- Passkey (WebAuthn) support
-- Social login integration
-- Multi-factor authentication
-- Rate limiting and brute force protection
-- Email verification flow
-- Admin interface
+## **Security Notes (Version 1.0)**
 
-## License
+* This is the **initial** release; review the source code for your security requirements.
+* `PASS0_DEV_MODE` must be **disabled in production**.
+* Magic link authentication depends on the user’s email security.
+* Always run behind HTTPS.
+* No built-in rate limiting—pair with Flask-Limiter if needed.
+* Token hashing and additional hardening may be added in future versions.
 
-MIT License
+---
+
+## **Roadmap**
+
+* Passkeys (WebAuthn)
+* Token hashing
+* Optional email-sending integration
+* Rate limiting helpers
+* MFA and advanced flows
+* Admin UI
+
+---
+
+## **License**
+
+MIT License (see LICENSE file)
+
+---
