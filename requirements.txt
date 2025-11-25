@@ -1,6 +1,8 @@
+-e .
 Flask>=2.0.0
 Flask-Mail>=0.9.1
--e .  # Install the current package in editable mode
-black>=22.3.0  # Code formatter
-pytest>=7.0.0  # Testing framework
-flake8>=4.0.1  # Linter
+Flask-SQLAlchemy>=2.5.0
+
+black>=22.3.0
+pytest>=7.0.0
+flake8>=4.0.1
