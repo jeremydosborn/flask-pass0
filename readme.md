@@ -2,13 +2,13 @@
 
 **Passwordless authentication building block for Flask.**
 
-Flask-Pass0 provides the authentication flow for magic link (passwordless) login. It handles token generation, expiration, and session management. **All security implementation is your responsibility.**
+Flask-Pass0 provides the authentication flow for magic link (passwordless) login. It handles token generation, expiration, and session management. All security implementation is your responsibility.
 
 ---
 
 ## Security Notice
 
-**Flask-Pass0 is authentication plumbing, not a security solution. Security is your responsibility.**
+Flask-Pass0 is authentication plumbing, not a security solution.
 
 This extension provides:
 - Token generation (`secrets.token_urlsafe`)
