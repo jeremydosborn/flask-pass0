@@ -1,0 +1,84 @@
+*.egg-info/
+*.dist-info/
+build/
+dist/
+*.pyc
+.venv/
+myenv/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Jupyter
+.ipynb_checkpoints
+
+# VS Code
+.vscode/
+.code-workspace
+
+# Environments
+.env
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Flask, instance folder
+instance/
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Misc
+.DS_Store
+Thumbs.db
+
+# Local test
+test-it-local.py
