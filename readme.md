@@ -1,5 +1,7 @@
 # Flask-Pass0
 
+This is an Alpha project and not production ready as is. Use as a starting point but move it out of dev with caution.
+
 **Passwordless authentication building block for Flask.**
 
 Flask-Pass0 provides the authentication flow for magic link (passwordless) login. It handles token generation, expiration, and session management. All security implementation is your responsibility.
