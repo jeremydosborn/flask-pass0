@@ -32,20 +32,6 @@ This extension provides:
 
 ---
 
-## Installation
-
-```bash
-pip install flask-pass0
-```
-
-Optional dependencies:
-```bash
-pip install Flask-Mail        # For email sending
-pip install Flask-SQLAlchemy  # For database storage
-```
-
----
-
 ## Quick Start
 
 ```python
