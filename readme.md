@@ -15,7 +15,6 @@ Flask-Pass0 provides a simple, clean interface for passwordless login flows whil
 * Easy integration through a self-contained Flask Blueprint
 * Works out of the box with an in-memory dev store
 * Optional SQLAlchemy adapter for database-backed storage
-* Mobile-friendly templates
 * Extensible design for additional login methods (e.g., passkeys)
 
 ---
