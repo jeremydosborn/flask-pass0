@@ -2,7 +2,7 @@
 
 # **Flask-Pass0 (v1.0)**
 
-Passwordless authentication for Flask using secure, time-limited magic links.
+Passwordless authentication for Flask using time-limited magic links.
 
 Flask-Pass0 provides a simple, clean interface for passwordless login flows while keeping your Flask application lightweight and easy to maintain. This is **Version 1.0**, the initial public release. Review the security notes below before using in production.
 
