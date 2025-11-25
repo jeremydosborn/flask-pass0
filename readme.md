@@ -28,8 +28,6 @@ This extension provides:
 - Email delivery security
 - All other security measures
 
-By using Flask-Pass0, you accept full responsibility for securing your application. This extension makes no security guarantees and provides no built-in security features beyond basic authentication flow.
-
 ---
 
 ## Installation
