@@ -114,3 +114,4 @@ Thumbs.db
 
 # Local test
 test-it-local.py
+.zprofile
