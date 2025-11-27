@@ -22,24 +22,26 @@ def generate_magic_link(email, next_url=None, storage=None):
         # NOTE: this is intended for development/testing only.
         user = get_or_create_user(email)
     
-    # Generate token
+    # Generate cryptographically secure token (256-bit entropy)
     token = secrets.token_urlsafe(32)
     
-    # Set expiration time (use UTC for consistency)
-    expiry_minutes = current_app.config.get('PASS0_TOKEN_EXPIRY', 10)
-    expiry = datetime.utcnow() + timedelta(minutes=expiry_minutes)
-    
-    # Store token with expiry and next_url if provided
+    # Store token with metadata
+    # NOTE: storage.store_token() handles hashing internally
     token_data = {
         'email': email,
-        'expiry': expiry,
         'next_url': next_url,
     }
     
     if storage:
+        # Storage adapter handles expiry, hashing, and security
         storage.store_token(token, token_data)
     else:
         # Fallback to in-memory storage (dev only)
+        # In-memory storage doesn't hash tokens (dev mode only!)
+        expiry_minutes = current_app.config.get('PASS0_TOKEN_EXPIRY', 10)
+        expiry = datetime.utcnow() + timedelta(minutes=expiry_minutes)
+        token_data['expiry'] = expiry
+        
         from .storage import _tokens
         _tokens[token] = token_data
     
@@ -47,7 +49,7 @@ def generate_magic_link(email, next_url=None, storage=None):
     link = url_for('pass0.verify', token=token, _external=True)
     
     # Send the email if not in development mode
-    if not current_app.config.get('PASS0_DEV_MODE', True):
+    if not current_app.config.get('PASS0_DEV_MODE', False):  # FIXED: Safe default
         send_magic_link_email(email, link)
     else:
         # DEV MODE: log the link instead of sending email
@@ -125,17 +127,23 @@ def verify_magic_link(token, storage=None):
             - error (str, optional)
     """
     if storage:
-        # Use storage adapter
+        # Storage adapter handles: hashing, expiry check, single-use enforcement
         token_data = storage.get_token(token)
+        
         if not token_data:
-            return {'success': False, 'error': 'Invalid token'}
+            # Token invalid, expired, or already used
+            return {'success': False, 'error': 'Invalid or expired token'}
             
         email = token_data.get('email')
-        expiry = token_data.get('expiry')
         next_url = token_data.get('next_url')
+        
+        # Get user
+        user = storage.get_or_create_user(email)
+        
     else:
         # Fallback to in-memory storage (dev only)
         from .storage import _tokens
+        
         if token not in _tokens:
             return {'success': False, 'error': 'Invalid token'}
             
@@ -143,22 +151,15 @@ def verify_magic_link(token, storage=None):
         email = token_data.get('email')
         expiry = token_data.get('expiry')
         next_url = token_data.get('next_url')
-    
-    # Check if token is expired (use UTC)
-    if datetime.utcnow() > expiry:
-        return {'success': False, 'error': 'Expired token'}
-    
-    # Remove token (one-time use)
-    if storage:
-        storage.delete_token(token)
-    else:
-        from .storage import _tokens
+        
+        # Check if token is expired (use UTC)
+        if datetime.utcnow() > expiry:
+            return {'success': False, 'error': 'Expired token'}
+        
+        # Remove token (one-time use)
         del _tokens[token]
-    
-    # Get user
-    if storage:
-        user = storage.get_or_create_user(email)
-    else:
+        
+        # Get user
         user = get_or_create_user(email)
     
     result = {'success': True, 'user': user}

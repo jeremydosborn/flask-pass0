@@ -1,142 +1,131 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Sign In</title>
+    <title>Login</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 0 20px;
-            line-height: 1.5;
-            color: #333;
+            font-family: -apple-system, system-ui, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
         }
         h1 {
-            font-size: 2.4rem;
-            font-weight: 600;
             margin-bottom: 30px;
-            color: #333;
+            font-size: 24px;
+            font-weight: 600;
         }
-        p {
-            font-size: 1.1rem;
-            margin-bottom: 25px;
-        }
-        label {
-            display: block;
-            font-size: 1.2rem;
-            font-weight: 500;
-            margin-bottom: 10px;
-        }
-        input[type="email"] {
+        input {
             width: 100%;
             padding: 12px;
-            font-size: 16px;
             border: 1px solid #ddd;
-            border-radius: 6px;
-            margin-bottom: 25px;
-            box-sizing: border-box;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-bottom: 16px;
         }
-        input[type="email"]:focus {
-            outline: none;
-            border-color: #4285f4;
-            box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
-        }
-        .button {
-            display: block;
+        button {
             width: 100%;
-            background-color: #4285f4;
+            padding: 12px;
+            background: #007bff;
             color: white;
             border: none;
-            padding: 15px;
-            font-size: 1rem;
-            font-weight: 500;
-            border-radius: 6px;
+            border-radius: 4px;
+            font-size: 16px;
             cursor: pointer;
-            transition: background-color 0.2s;
         }
-        .button:hover {
-            background-color: #3367d6;
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .error {
+            padding: 12px;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            color: #c00;
         }
-        .alert {
-            padding: 12px 15px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            font-size: 15px;
-        }
-        .alert-error {
-            background-color: #fce8e6;
-            border: 1px solid #d93025;
-            color: #d93025;
-        }
-        .alert-success {
-            background-color: #e6f4ea;
-            border: 1px solid #34a853;
-            color: #1e8e3e;
+        .info {
+            margin-top: 16px;
+            padding: 12px;
+            background: #eff;
+            border-radius: 4px;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
-    <h1>Sign In</h1>
-    
-    {% if request.args.get('error') %}
-    <div class="alert alert-error">
-        {{ request.args.get('error') }}
+    <div class="container">
+        <h1>Login</h1>
+        
+        {% if request.args.get('error') %}
+        <div class="error">{{ request.args.get('error') }}</div>
+        {% endif %}
+        
+        <form id="form">
+            <input type="email" id="email" placeholder="Enter your email" required autofocus>
+            <button type="submit" id="btn">Send Login Link</button>
+        </form>
+        
+        <div id="message" style="display:none;"></div>
     </div>
-    {% endif %}
-    
-    <form action="{{ url_for('pass0.request_magic_link') }}" method="POST" id="login-form">
-        <p>Enter your email to continue</p>
-        
-        <label for="email">Email Address</label>
-        <input type="email" id="email" name="email" required autofocus>
-        
-        <button type="submit" class="button" id="submit-btn">Send Magic Link</button>
-    </form>
 
     <script>
-        document.getElementById('login-form').addEventListener('submit', function(e) {
+        const form = document.getElementById('form');
+        const btn = document.getElementById('btn');
+        const msg = document.getElementById('message');
+        
+        form.onsubmit = async (e) => {
             e.preventDefault();
-            
             const email = document.getElementById('email').value;
-            const button = document.getElementById('submit-btn');
             
-            // Disable button and show loading state
-            button.disabled = true;
-            button.textContent = 'Sending...';
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
             
-            fetch('{{ url_for("pass0.request_magic_link") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email: email }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                button.disabled = false;
-                button.textContent = 'Send Magic Link';
+            try {
+                const res = await fetch('{{ url_for("pass0.request_magic_link") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                
+                const data = await res.json();
                 
                 if (data.success) {
                     if (data.link) {
-                        const confirmMsg = `Magic link generated. In production, this would be emailed.\n\nLink: ${data.link}\n\nClick OK to open the link.`;
-                        if (confirm(confirmMsg)) {
-                            window.location.href = data.link;
-                        }
+                        // Dev mode
+                        msg.className = 'info';
+                        msg.innerHTML = `Dev mode: <a href="${data.link}">Click here to login</a>`;
+                        msg.style.display = 'block';
                     } else {
-                        alert('Magic link sent! Please check your email.');
+                        msg.className = 'info';
+                        msg.textContent = 'Check your email for the login link.';
+                        msg.style.display = 'block';
                     }
                 } else {
-                    alert('Error: ' + (data.error || 'Failed to send magic link'));
+                    msg.className = 'error';
+                    msg.textContent = data.error || 'Something went wrong';
+                    msg.style.display = 'block';
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                button.disabled = false;
-                button.textContent = 'Send Magic Link';
-                alert('Error sending magic link. Please try again.');
-            });
-        });
+            } catch (err) {
+                msg.className = 'error';
+                msg.textContent = 'Network error. Please try again.';
+                msg.style.display = 'block';
+            }
+            
+            btn.disabled = false;
+            btn.textContent = 'Send Login Link';
+        };
     </script>
 </body>
 </html>

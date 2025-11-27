@@ -1,7 +1,7 @@
 from flask import Blueprint, session, redirect, url_for, render_template, request, current_app, jsonify
 import time
 from .magic_link import generate_magic_link, verify_magic_link, get_or_create_user
-from .storage import get_storage_adapter
+from .storage import InMemoryStorageAdapter
 from functools import wraps
 
 class Pass0:
@@ -12,7 +12,7 @@ class Pass0:
         self.blueprint = Blueprint('pass0', __name__, template_folder='templates')
         
         # Initialize storage adapter
-        self.storage = storage_adapter or get_storage_adapter()
+        self.storage = storage_adapter or InMemoryStorageAdapter()
         
         # Initialize with custom user model if provided
         self.user_model = user_model
@@ -39,7 +39,7 @@ class Pass0:
         app.config.setdefault('PASS0_TOKEN_EXPIRY', 10)  # minutes
         app.config.setdefault('PASS0_REDIRECT_URL', '/')  # Default redirect after login
         app.config.setdefault('PASS0_LOGIN_URL', '/auth/login')  # Login page URL
-        app.config.setdefault('PASS0_DEV_MODE', True)  # Development mode by default
+        app.config.setdefault('PASS0_DEV_MODE', False)  # FIXED: Production-safe default
         app.config.setdefault('PASS0_SESSION_DURATION', 24 * 60 * 60)  # Session duration in seconds (24 hours)
         
         # Register the blueprint
@@ -133,7 +133,7 @@ class Pass0:
                 link = generate_magic_link(email, next_url=next_url, storage=self.storage)
                 
                 # In development mode, return the link in the response
-                if current_app.config.get('PASS0_DEV_MODE', True):
+                if current_app.config.get('PASS0_DEV_MODE', False):  # FIXED: Safe default
                     return jsonify({'success': True, 'link': link})
                 else:
                     return jsonify({'success': True, 'message': 'Magic link sent to your email'})
