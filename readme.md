@@ -1,10 +1,10 @@
 # Flask-Pass0
 
-Alpha software and not ready for production. Passwordless authentication for Flask.
+Alpha passwordless auth module implementing magic links to start with scaffolding for future passkey implementation. Not ready for production. Magic links are not intended for high security use cases.
 
 ## What It Does
 
-Handles magic link authentication flow with built-in security:
+Handles magic link authentication flow to start with built-in security
 - Token hashing (HMAC-SHA256)
 - Single-use enforcement
 - Secure generation (256-bit entropy)
