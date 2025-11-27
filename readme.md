@@ -1,6 +1,6 @@
 # Flask-Pass0
 
-Alpha software. Passwordless authentication for Flask using magic links.
+Alpha software. Passwordless authentication for Flask.
 
 ## What It Does
 
