@@ -1,6 +1,6 @@
 # Flask-Pass0
 
-Alpha software. Passwordless authentication for Flask.
+Alpha software and not ready for production. Passwordless authentication for Flask.
 
 ## What It Does
 
@@ -16,6 +16,7 @@ Handles magic link authentication flow with built-in security:
 - Email sending
 - Rate limiting
 - CSRF protection
+- Any other security
 
 ## Install
 
@@ -32,7 +33,7 @@ from flask_pass0.utils import login_required
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
-app.config['PASS0_DEV_MODE'] = True  # Shows links in console
+app.config['PASS0_DEV_MODE'] = True  # Shows links in console and not by email
 
 pass0 = Pass0(app)
 
@@ -47,7 +48,7 @@ def index():
 | Option | Default | Description |
 |--------|---------|-------------|
 | SECRET_KEY | required | For token hashing |
-| PASS0_DEV_MODE | False | Show links in console vs email |
+| PASS0_DEV_MODE | False | Show links in console vs by email |
 | PASS0_TOKEN_EXPIRY | 10 | Token expiry (minutes) |
 | PASS0_TOKEN_LENGTH | 32 | Token bytes (32 = 256 bits) |
 
@@ -106,24 +107,15 @@ app.config['PASS0_DEV_MODE'] = False  # Send real emails
 - Rate limiting (use Flask-Limiter)
 - CSRF protection (use Flask-WTF)
 - Strong SECRET_KEY
+- All other security
 
 **Attack scenarios:**
 
 Database compromised: Tokens are hashed, can't be reversed without SECRET_KEY.
 
-Token intercepted: Can be used once within 10 minutes. HTTPS required. For banking/healthcare, add 2FA separately.
+Token intercepted: Can be used once within 10 minutes. HTTPS required. For high security applications, add 2FA separately.
 
 Brute force: 2^256 space makes guessing impossible.
-
-## Production Checklist
-
-- [ ] PASS0_DEV_MODE = False
-- [ ] HTTPS enabled
-- [ ] Email configured
-- [ ] Rate limiting added
-- [ ] Strong SECRET_KEY set
-- [ ] CSRF protection added
-- [ ] Session cookies secured
 
 ## Routes
 
@@ -131,14 +123,6 @@ Brute force: 2^256 space makes guessing impossible.
 - `POST /auth/request-magic-link` - Request link (JSON: `{"email": "user@example.com"}`)
 - `GET /auth/verify/<token>` - Verify token
 - `GET /auth/logout` - Logout
-
-## Limitations
-
-- Alpha software
-- No rate limiting (add Flask-Limiter)
-- No CSRF protection (add Flask-WTF)
-- Email requires external service
-- Not suitable alone for high-security (add 2FA)
 
 ## Notes
 
