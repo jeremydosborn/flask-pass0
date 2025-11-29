@@ -94,22 +94,6 @@ class Pass0:
     def _register_routes(self):
         """Register authentication routes on the blueprint."""
         
-        @self.blueprint.route('/login')
-        def login():
-            """Render the login page."""
-            # If user is already logged in, redirect to default redirect URL
-            if self.is_authenticated():
-                return redirect(current_app.config.get('PASS0_REDIRECT_URL', '/'))
-            
-            # Get the next URL from query parameters or session
-            next_url = request.args.get('next') or session.get('next')
-            if next_url:
-                session['next'] = next_url
-            
-            # Pass available auth methods to the template
-            return render_template('auth.html', 
-                                 auth_methods=self.auth_methods)
-        
         @self.blueprint.route('/request-magic-link', methods=['POST'])
         def request_magic_link():
             """Request a magic link for authentication."""
