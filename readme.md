@@ -1,6 +1,3 @@
----
-
-````markdown
 # Flask-Pass0
 
 Passwordless authentication for Flask with magic links, 2FA, and device binding. Alpha version, still in development, not production-ready.
@@ -266,5 +263,3 @@ MIT License.
 
 PRs welcome at:  
 https://github.com/jeremydosborn/flask-pass0
-````
----
