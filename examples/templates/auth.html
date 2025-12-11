@@ -47,14 +47,6 @@
         }
         button:hover { background: #0056b3; }
         button:disabled { background: #ccc; cursor: not-allowed; }
-        .error {
-            padding: 12px;
-            background: #fee;
-            border: 1px solid #fcc;
-            border-radius: 4px;
-            margin-bottom: 16px;
-            color: #c00;
-        }
         .info {
             margin-top: 16px;
             padding: 12px;
@@ -67,10 +59,6 @@
 <body>
     <div class="container">
         <h1>Login</h1>
-        
-        {% if request.args.get('error') %}
-        <div class="error">{{ request.args.get('error') }}</div>
-        {% endif %}
         
         <form id="form">
             <input type="email" id="email" placeholder="Enter your email" required autofocus>
@@ -93,7 +81,7 @@
             btn.textContent = 'Sending...';
             
             try {
-                const res = await fetch('{{ url_for("pass0.request_magic_link") }}', {
+                const res = await fetch('/auth/request-magic-link', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email })
@@ -103,7 +91,6 @@
                 
                 if (data.success) {
                     if (data.link) {
-                        // Dev mode
                         msg.className = 'info';
                         msg.innerHTML = `Dev mode: <a href="${data.link}">Click here to login</a>`;
                         msg.style.display = 'block';

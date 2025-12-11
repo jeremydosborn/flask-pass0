@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Two-Factor Authentication</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        h1 { margin-bottom: 10px; font-size: 24px; }
+        p { margin-bottom: 20px; color: #666; }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 0.5em;
+            font-family: monospace;
+            margin-bottom: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.secondary:hover { background: #5a6268; }
+        .error {
+            padding: 12px;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            color: #c00;
+        }
+        .toggle {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        .toggle a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .toggle a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Two-Factor Authentication</h1>
+        <p id="instruction">Enter the 6-digit code from your authenticator app.</p>
+        
+        <div id="message" class="error" style="display:none;"></div>
+        
+        <form id="form">
+            <input 
+                type="text" 
+                id="code" 
+                placeholder="000000" 
+                maxlength="10"
+                pattern="[0-9A-Z\-]+"
+                required 
+                autofocus
+            >
+            <button type="submit" id="btn">Verify Code</button>
+        </form>
+        
+        <div class="toggle">
+            <a href="#" id="toggle-link" onclick="toggleBackupMode(event)">
+                Use backup code instead
+            </a>
+        </div>
+    </div>
+
+    <script>
+        let useBackup = false;
+        
+        const form = document.getElementById('form');
+        const btn = document.getElementById('btn');
+        const msg = document.getElementById('message');
+        const codeInput = document.getElementById('code');
+        const instruction = document.getElementById('instruction');
+        const toggleLink = document.getElementById('toggle-link');
+        
+        function toggleBackupMode(e) {
+            e.preventDefault();
+            useBackup = !useBackup;
+            
+            if (useBackup) {
+                instruction.textContent = 'Enter one of your backup codes (XXXX-XXXX).';
+                codeInput.placeholder = 'XXXX-XXXX';
+                codeInput.maxLength = 9;
+                toggleLink.textContent = 'Use authenticator app instead';
+            } else {
+                instruction.textContent = 'Enter the 6-digit code from your authenticator app.';
+                codeInput.placeholder = '000000';
+                codeInput.maxLength = 6;
+                toggleLink.textContent = 'Use backup code instead';
+            }
+            
+            codeInput.value = '';
+            codeInput.focus();
+        }
+        
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const code = codeInput.value.trim();
+            
+            if (!code) {
+                showError('Please enter a code');
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.textContent = 'Verifying...';
+            msg.style.display = 'none';
+            
+            try {
+                const res = await fetch('{{ url_for("pass0.verify_2fa") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        code: code,
+                        use_backup: useBackup
+                    })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    window.location.href = '/';
+                } else {
+                    showError(data.error || 'Invalid code. Please try again.');
+                }
+            } catch (err) {
+                showError('Network error. Please try again.');
+            }
+            
+            btn.disabled = false;
+            btn.textContent = 'Verify Code';
+        };
+        
+        function showError(text) {
+            msg.textContent = text;
+            msg.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

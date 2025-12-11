@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import url_for, current_app
 from flask_mail import Mail, Message
 
@@ -39,7 +39,7 @@ def generate_magic_link(email, next_url=None, storage=None):
         # Fallback to in-memory storage (dev only)
         # In-memory storage doesn't hash tokens (dev mode only!)
         expiry_minutes = current_app.config.get('PASS0_TOKEN_EXPIRY', 10)
-        expiry = datetime.utcnow() + timedelta(minutes=expiry_minutes)
+        expiry = datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)
         token_data['expiry'] = expiry
         
         from .storage import _tokens
@@ -153,7 +153,7 @@ def verify_magic_link(token, storage=None):
         next_url = token_data.get('next_url')
         
         # Check if token is expired (use UTC)
-        if datetime.utcnow() > expiry:
+        if datetime.now(timezone.utc) > expiry:
             return {'success': False, 'error': 'Expired token'}
         
         # Remove token (one-time use)
@@ -184,6 +184,6 @@ def get_or_create_user(email):
             'id': user_id,
             'email': email,
             'name': email.split('@')[0],  # Simple name from email
-            'created_at': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
         }
     return _users[email]

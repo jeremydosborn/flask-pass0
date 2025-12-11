@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { font-size: 24px; }
+        h2 { font-size: 20px; margin-bottom: 15px; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: #6c757d;
+            border-bottom: 3px solid transparent;
+        }
+        .tab:hover { color: #007bff; }
+        .tab.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+            font-weight: 600;
+        }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .user-info { padding: 15px; background: #f9f9f9; border-radius: 4px; }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        button.danger { background: #dc3545; }
+        button.danger:hover { background: #c82333; }
+        button.secondary { background: #6c757d; }
+        button.secondary:hover { background: #5a6268; }
+        
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .status.enabled { background: #d4edda; color: #155724; }
+        .status.disabled { background: #f8d7da; color: #721c24; }
+        
+        #qr-code { text-align: center; margin: 20px 0; }
+        #qr-code img { max-width: 300px; border: 1px solid #ddd; padding: 10px; border-radius: 8px; }
+        
+        .backup-codes {
+            background: #fff3cd;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            line-height: 2;
+            border: 2px solid #ffc107;
+        }
+        
+        .device {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .log-entry {
+            background: #f8f9fa;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 4px;
+            border-left: 3px solid #6c757d;
+            font-size: 14px;
+        }
+        .log-entry.login_success { border-left-color: #28a745; }
+        .log-entry.magic_link_requested { border-left-color: #17a2b8; }
+        .log-entry.2fa_enabled,
+        .log-entry.2fa_verified { border-left-color: #007bff; }
+        .log-entry.2fa_failed { border-left-color: #dc3545; }
+        .log-entry.logout { border-left-color: #6c757d; }
+        
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .log-type {
+            font-weight: 600;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-time {
+            color: #6c757d;
+            font-size: 12px;
+        }
+        .log-message {
+            margin-bottom: 5px;
+        }
+        .log-data {
+            font-family: monospace;
+            font-size: 11px;
+            color: #6c757d;
+            background: white;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        
+        input {
+            padding: 10px;
+            width: 200px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .hidden { display: none; }
+        
+        code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Dashboard</h1>
+        <a href="/auth/logout">Logout</a>
+    </header>
+    
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('overview')">Overview</button>
+        <button class="tab" onclick="switchTab('security')">Security</button>
+        <button class="tab" onclick="switchTab('devices')">Devices</button>
+        <button class="tab" onclick="switchTab('logs')">Event Logs</button>
+    </div>
+    
+    <div id="tab-overview" class="tab-content active">
+        <div class="card">
+            <h2>Account Info</h2>
+            <div class="user-info">
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>User ID:</strong> {{ user.id }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="tab-security" class="tab-content">
+        <div class="card">
+            <h2>Two-Factor Authentication</h2>
+            
+            <div id="2fa-status-container">
+                {% if twofa_enabled %}
+                    <span class="status enabled">2FA Enabled</span>
+                    <div style="margin-top: 15px;">
+                        <button onclick="disable2FA()" class="danger">Disable 2FA</button>
+                        <button onclick="regenerateBackupCodes()">Regenerate Backup Codes</button>
+                    </div>
+                {% else %}
+                    <span class="status disabled">2FA Disabled</span>
+                    <div style="margin-top: 15px;">
+                        <button onclick="setup2FA()">Enable 2FA</button>
+                    </div>
+                {% endif %}
+            </div>
+            
+            <div id="2fa-setup" class="hidden">
+                <h3 style="margin-top: 20px;">Setup 2FA</h3>
+                <p>Scan this QR code with your authenticator app</p>
+                <div id="qr-code"></div>
+                <p>Or enter manually: <code id="secret"></code></p>
+                <input type="text" id="verify-code" placeholder="Enter 6-digit code" maxlength="6">
+                <button onclick="verify2FA()">Verify & Enable</button>
+                <button onclick="cancel2FASetup()" class="secondary">Cancel</button>
+            </div>
+            
+            <div id="backup-codes-display"></div>
+        </div>
+    </div>
+    
+    <div id="tab-devices" class="tab-content">
+        <div class="card">
+            <h2>Trusted Devices</h2>
+            <p style="margin-bottom: 15px; color: #6c757d;">
+                Devices that can skip 2FA verification.
+            </p>
+            <button onclick="loadDevices()">Refresh</button>
+            <div id="devices-list"></div>
+        </div>
+    </div>
+    
+    <div id="tab-logs" class="tab-content">
+        <div class="card">
+            <h2>Security Event Logs</h2>
+            <p style="margin-bottom: 15px; color: #6c757d;">
+                Real-time log of authentication events. Sensitive data (tokens, secrets) is redacted.
+            </p>
+            
+            <div style="margin-bottom: 15px;">
+                <button onclick="loadLogs()">Refresh</button>
+                <button onclick="clearLogs()" class="danger">Clear Logs</button>
+            </div>
+            
+            <div id="logs-container">
+                <p style="text-align: center; padding: 40px; color: #6c757d;">Loading logs...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById('tab-' + tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            if (tabName === 'devices') loadDevices();
+            if (tabName === 'logs') loadLogs();
+        }
+        
+        function setup2FA() {
+            console.log('setup2FA called');
+            fetch('/auth/2fa/setup')
+                .then(r => {
+                    console.log('Response status:', r.status);
+                    return r.json();
+                })
+                .then(data => {
+                    console.log('Response data:', data);
+                    if (data.error) {
+                        alert('Error: ' + data.error);
+                        return;
+                    }
+                    document.getElementById('2fa-setup').classList.remove('hidden');
+                    document.getElementById('qr-code').innerHTML = 
+                        `<img src="${data.qr_code}" alt="QR Code">`;
+                    document.getElementById('secret').textContent = data.secret;
+                })
+                .catch(err => {
+                    console.error('Fetch error:', err);
+                    alert('Network error: ' + err.message);
+                });
+        }
+        
+        function verify2FA() {
+            const code = document.getElementById('verify-code').value;
+            
+            fetch('/auth/2fa/setup', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({code})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert('2FA enabled!');
+                    
+                    const codesHTML = data.backup_codes.map(c => `<div>${c}</div>`).join('');
+                    document.getElementById('backup-codes-display').innerHTML = `
+                        <div class="backup-codes">
+                            <strong>Save these backup codes!</strong>
+                            <p>Use if you lose your authenticator.</p>
+                            ${codesHTML}
+                        </div>
+                    `;
+                    
+                    setTimeout(() => location.reload(), 10000);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+        }
+        
+        function cancel2FASetup() {
+            document.getElementById('2fa-setup').classList.add('hidden');
+            document.getElementById('verify-code').value = '';
+        }
+        
+        function disable2FA() {
+            if (!confirm('Disable 2FA?')) return;
+            fetch('/auth/2fa/disable', {method: 'POST'})
+                .then(r => r.json())
+                .then(() => {
+                    alert('2FA disabled');
+                    location.reload();
+                });
+        }
+        
+        function regenerateBackupCodes() {
+            if (!confirm('Regenerate codes? Old codes will stop working.')) return;
+            fetch('/auth/2fa/backup-codes', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    const codesHTML = data.backup_codes.map(c => `<div>${c}</div>`).join('');
+                    document.getElementById('backup-codes-display').innerHTML = `
+                        <div class="backup-codes">
+                            <strong>New backup codes!</strong>
+                            <p>Save these - old codes no longer work.</p>
+                            ${codesHTML}
+                        </div>
+                    `;
+                });
+        }
+        
+        function loadDevices() {
+            fetch('/auth/devices')
+                .then(r => r.json())
+                .then(data => {
+                    const div = document.getElementById('devices-list');
+                    if (data.devices.length === 0) {
+                        div.innerHTML = '<p style="margin-top: 15px;">No trusted devices.</p>';
+                        return;
+                    }
+                    div.innerHTML = data.devices.map(d => `
+                        <div class="device">
+                            <div>
+                                <strong>${d.device_name || 'Unknown'}</strong><br>
+                                <small>Last: ${new Date(d.last_seen).toLocaleString()}</small>
+                            </div>
+                            <button onclick="revokeDevice(${d.id})" class="danger">Revoke</button>
+                        </div>
+                    `).join('');
+                });
+        }
+        
+        function revokeDevice(id) {
+            if (!confirm('Revoke?')) return;
+            fetch(`/auth/devices/${id}/revoke`, {method: 'POST'})
+                .then(() => {
+                    alert('Revoked');
+                    loadDevices();
+                });
+        }
+        
+        function loadLogs() {
+            console.log('loadLogs called');
+            fetch('/api/security-logs')
+                .then(r => {
+                    console.log('Logs response status:', r.status);
+                    return r.json();
+                })
+                .then(data => {
+                    console.log('Logs data:', data);
+                    const div = document.getElementById('logs-container');
+                    if (data.events.length === 0) {
+                        div.innerHTML = '<p style="text-align: center; padding: 40px;">No events yet.</p>';
+                        return;
+                    }
+                    div.innerHTML = data.events.map(e => {
+                        const time = new Date(e.timestamp).toLocaleString();
+                        const dataStr = Object.entries(e.data).map(([k, v]) => `${k}: ${v}`).join(', ');
+                        return `
+                            <div class="log-entry ${e.type}">
+                                <div class="log-header">
+                                    <span class="log-type">${e.type}</span>
+                                    <span class="log-time">${time}</span>
+                                </div>
+                                <div class="log-message">${e.message}</div>
+                                ${dataStr ? `<div class="log-data">${dataStr}</div>` : ''}
+                            </div>
+                        `;
+                    }).join('');
+                })
+                .catch(err => {
+                    console.error('Logs fetch error:', err);
+                    document.getElementById('logs-container').innerHTML = 
+                        `<p style="color: red;">Error loading logs: ${err.message}</p>`;
+                });
+        }
+        
+        function clearLogs() {
+            if (!confirm('Clear all logs?')) return;
+            fetch('/api/security-logs/clear', {method: 'POST'})
+                .then(() => {
+                    alert('Cleared');
+                    loadLogs();
+                });
+        }
+        
+        loadLogs();
+    </script>
+</body>
+</html>

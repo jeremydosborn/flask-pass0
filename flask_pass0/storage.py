@@ -1,67 +1,109 @@
 """
-Flask-Pass0 Storage Adapters with Built-in Security
-====================================================
-Version 1.1+ includes:
-- Token hashing (HMAC-SHA256)
-- Single-use enforcement
-- Secure token generation
+Flask-Pass0 Storage Adapters with 2FA and Device Binding Support
 """
 
 import hmac
 import hashlib
 import secrets
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from cryptography.fernet import Fernet
 
 
 class StorageAdapter(ABC):
-    """Base storage adapter interface"""
+    """Extended base storage adapter interface"""
     
     @abstractmethod
     def get_user_by_email(self, email):
-        """Retrieve user by email address"""
         pass
     
     @abstractmethod
     def get_user_by_id(self, user_id):
-        """Retrieve user by ID"""
         pass
     
     @abstractmethod
     def get_or_create_user(self, email):
-        """Get existing user or create new one"""
         pass
     
     @abstractmethod
     def store_token(self, token, token_data):
-        """Store token securely (hashed)"""
         pass
     
     @abstractmethod
     def get_token(self, token):
-        """Retrieve and consume token (single-use)"""
         pass
     
     @abstractmethod
     def delete_token(self, token):
-        """Delete token"""
         pass
+    
+    # 2FA methods (optional - return defaults if not implemented)
+    def is_2fa_enabled(self, user_id):
+        return False
+    
+    def get_2fa_secret(self, user_id):
+        return None
+    
+    def enable_2fa(self, user_id, secret, backup_codes):
+        raise NotImplementedError("2FA not supported")
+    
+    def disable_2fa(self, user_id):
+        raise NotImplementedError("2FA not supported")
+    
+    def validate_backup_code(self, user_id, code_hash):
+        return False
+    
+    def regenerate_backup_codes(self, user_id, new_codes):
+        raise NotImplementedError("2FA not supported")
+    
+    def store_2fa_code(self, code_data):
+        raise NotImplementedError("Email 2FA not supported")
+    
+    def verify_2fa_code(self, user_id, code_hash):
+        return False
+    
+    # Device binding methods (optional)
+    def is_device_trusted(self, user_id, fingerprint_hash):
+        return False
+    
+    def add_trusted_device(self, device_data):
+        raise NotImplementedError("Device binding not supported")
+    
+    def get_trusted_devices(self, user_id):
+        return []
+    
+    def update_device_last_seen(self, user_id, fingerprint_hash):
+        pass
+    
+    def revoke_device(self, user_id, device_id):
+        raise NotImplementedError("Device binding not supported")
+    
+    def store_device_challenge(self, challenge_data):
+        raise NotImplementedError("Device binding not supported")
+    
+    def verify_device_challenge(self, token):
+        return None
 
 
 class InMemoryStorageAdapter(StorageAdapter):
-    """
-    In-memory storage for development only.
-    DO NOT USE IN PRODUCTION - data lost on restart.
-    """
+    """In-memory storage for development. DO NOT USE IN PRODUCTION."""
     
-    def __init__(self, secret_key=None, token_expiry_minutes=10):
+    def __init__(self, secret_key=None, token_expiry_minutes=10, encryption_key=None):
         self.users = {}
         self.tokens = {}
         self.secret_key = secret_key or secrets.token_hex(32)
         self.token_expiry = token_expiry_minutes
+        
+        self.totp_secrets = {}
+        self.backup_codes = {}
+        self.email_2fa_codes = {}
+        self.trusted_devices = {}
+        self.device_challenges = {}
+        
+        self.encryption_key = encryption_key or Fernet.generate_key()
+        self.cipher = Fernet(self.encryption_key)
     
     def _hash_token(self, token):
-        """Hash token using HMAC-SHA256"""
         return hmac.new(
             self.secret_key.encode(),
             token.encode(),
@@ -78,48 +120,38 @@ class InMemoryStorageAdapter(StorageAdapter):
         return None
     
     def get_or_create_user(self, email):
-        """Get existing user or create new one"""
         if email not in self.users:
             user_id = len(self.users) + 1
             self.users[email] = {
                 'id': user_id,
                 'email': email,
-                'created_at': datetime.utcnow().isoformat()
+                'created_at': datetime.now(timezone.utc).isoformat()
             }
         return self.users[email]
     
     def store_token(self, token, token_data):
-        """Store hashed token with expiry"""
         token_hash = self._hash_token(token)
-        
         self.tokens[token_hash] = {
             'email': token_data.get('email'),
             'next_url': token_data.get('next_url'),
             'used': False,
-            'created_at': datetime.utcnow(),
-            'expires_at': datetime.utcnow() + timedelta(minutes=self.token_expiry)
+            'created_at': datetime.now(timezone.utc),
+            'expires_at': datetime.now(timezone.utc) + timedelta(minutes=self.token_expiry)
         }
     
     def get_token(self, token):
-        """Verify and consume token (single-use)"""
         token_hash = self._hash_token(token)
-        
         token_data = self.tokens.get(token_hash)
-        if not token_data:
+        
+        if not token_data or token_data['used']:
             return None
         
-        # Check if already used
-        if token_data['used']:
-            return None
-        
-        # Check expiry
-        if token_data['expires_at'] < datetime.utcnow():
+        if token_data['expires_at'] < datetime.now(timezone.utc):
             del self.tokens[token_hash]
             return None
         
-        # Mark as used (single-use enforcement)
         token_data['used'] = True
-        token_data['used_at'] = datetime.utcnow()
+        token_data['used_at'] = datetime.now(timezone.utc)
         
         return {
             'email': token_data['email'],
@@ -127,42 +159,137 @@ class InMemoryStorageAdapter(StorageAdapter):
         }
     
     def delete_token(self, token):
-        """Delete token"""
         token_hash = self._hash_token(token)
         self.tokens.pop(token_hash, None)
     
-    def cleanup_expired_tokens(self):
-        """Remove expired tokens"""
-        now = datetime.utcnow()
-        expired = [k for k, v in self.tokens.items() if v['expires_at'] < now]
-        for k in expired:
-            del self.tokens[k]
+    def is_2fa_enabled(self, user_id):
+        return user_id in self.totp_secrets
+    
+    def get_2fa_secret(self, user_id):
+        encrypted = self.totp_secrets.get(user_id)
+        if encrypted:
+            return self.cipher.decrypt(encrypted).decode()
+        return None
+    
+    def enable_2fa(self, user_id, secret, backup_codes):
+        encrypted_secret = self.cipher.encrypt(secret.encode())
+        self.totp_secrets[user_id] = encrypted_secret
+        self.backup_codes[user_id] = backup_codes.copy()
+    
+    def disable_2fa(self, user_id):
+        self.totp_secrets.pop(user_id, None)
+        self.backup_codes.pop(user_id, None)
+    
+    def validate_backup_code(self, user_id, code_hash):
+        if user_id not in self.backup_codes:
+            return False
+        
+        codes = self.backup_codes[user_id]
+        if code_hash in codes:
+            codes.remove(code_hash)
+            return True
+        return False
+    
+    def regenerate_backup_codes(self, user_id, new_codes):
+        self.backup_codes[user_id] = new_codes.copy()
+    
+    def store_2fa_code(self, code_data):
+        user_id = code_data['user_id']
+        self.email_2fa_codes[user_id] = {
+            'code_hash': code_data['code_hash'],
+            'expires_at': code_data['expires_at'],
+            'used': False
+        }
+    
+    def verify_2fa_code(self, user_id, code_hash):
+        if user_id not in self.email_2fa_codes:
+            return False
+        
+        data = self.email_2fa_codes[user_id]
+        
+        if data['used'] or data['expires_at'] < datetime.now(timezone.utc):
+            return False
+        
+        if data['code_hash'] == code_hash:
+            data['used'] = True
+            return True
+        
+        return False
+    
+    def is_device_trusted(self, user_id, fingerprint_hash):
+        if user_id not in self.trusted_devices:
+            return False
+        
+        for device in self.trusted_devices[user_id]:
+            if device['fingerprint_hash'] == fingerprint_hash and device['is_trusted']:
+                return True
+        return False
+    
+    def add_trusted_device(self, device_data):
+        user_id = device_data['user_id']
+        
+        if user_id not in self.trusted_devices:
+            self.trusted_devices[user_id] = []
+        
+        device_data['id'] = len(self.trusted_devices[user_id]) + 1
+        self.trusted_devices[user_id].append(device_data)
+    
+    def get_trusted_devices(self, user_id):
+        return self.trusted_devices.get(user_id, [])
+    
+    def update_device_last_seen(self, user_id, fingerprint_hash):
+        if user_id not in self.trusted_devices:
+            return
+        
+        for device in self.trusted_devices[user_id]:
+            if device['fingerprint_hash'] == fingerprint_hash:
+                device['last_seen'] = datetime.now(timezone.utc)
+                break
+    
+    def revoke_device(self, user_id, device_id):
+        if user_id not in self.trusted_devices:
+            return
+        
+        self.trusted_devices[user_id] = [
+            d for d in self.trusted_devices[user_id] if d['id'] != device_id
+        ]
+    
+    def store_device_challenge(self, challenge_data):
+        token = challenge_data['token']
+        self.device_challenges[token] = challenge_data
+    
+    def verify_device_challenge(self, token):
+        if token not in self.device_challenges:
+            return None
+        
+        data = self.device_challenges[token]
+        
+        if data['used'] or data['expires_at'] < datetime.now(timezone.utc):
+            return None
+        
+        data['used'] = True
+        return data
 
 
 class SQLAlchemyStorageAdapter(StorageAdapter):
-    """
-    SQLAlchemy-based storage with built-in security.
+    """SQLAlchemy storage with 2FA and device binding support."""
     
-    Features:
-    - Token hashing (HMAC-SHA256)
-    - Single-use enforcement
-    - Automatic expiry
-    """
-    
-    def __init__(self, user_model, session, secret_key=None, token_expiry_minutes=10):
+    def __init__(self, user_model, session, secret_key=None, token_expiry_minutes=10, encryption_key=None):
         self.user_model = user_model
         self.session = session
         self.secret_key = secret_key or secrets.token_hex(32)
         self.token_expiry = token_expiry_minutes
         
-        # Create tokens table
-        self._ensure_token_table()
+        self.encryption_key = encryption_key or Fernet.generate_key()
+        self.cipher = Fernet(self.encryption_key)
+        
+        self._ensure_tables()
     
-    def _ensure_token_table(self):
-        """Create secure tokens table"""
-        from sqlalchemy import Table, Column, Integer, String, Boolean, DateTime, MetaData, Index
+    def _ensure_tables(self):
+        from sqlalchemy import Table, Column, Integer, String, Boolean, DateTime, Text, MetaData
         
         metadata = MetaData()
+        
         self.tokens_table = Table(
             'pass0_tokens',
             metadata,
@@ -177,11 +304,70 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
             extend_existing=True
         )
         
-        # Create table if doesn't exist
+        self.totp_secrets_table = Table(
+            'pass0_2fa_secrets',
+            metadata,
+            Column('id', Integer, primary_key=True),
+            Column('user_id', Integer, nullable=False, unique=True, index=True),
+            Column('secret_encrypted', Text, nullable=False),
+            Column('enabled_at', DateTime, nullable=False),
+            extend_existing=True
+        )
+        
+        self.backup_codes_table = Table(
+            'pass0_backup_codes',
+            metadata,
+            Column('id', Integer, primary_key=True),
+            Column('user_id', Integer, nullable=False, index=True),
+            Column('code_hash', String(64), nullable=False),
+            Column('used', Boolean, default=False, nullable=False),
+            Column('created_at', DateTime, nullable=False),
+            extend_existing=True
+        )
+        
+        self.email_2fa_codes_table = Table(
+            'pass0_email_2fa_codes',
+            metadata,
+            Column('id', Integer, primary_key=True),
+            Column('user_id', Integer, nullable=False, index=True),
+            Column('code_hash', String(64), nullable=False),
+            Column('created_at', DateTime, nullable=False),
+            Column('expires_at', DateTime, nullable=False, index=True),
+            Column('used', Boolean, default=False, nullable=False),
+            extend_existing=True
+        )
+        
+        self.trusted_devices_table = Table(
+            'pass0_trusted_devices',
+            metadata,
+            Column('id', Integer, primary_key=True),
+            Column('user_id', Integer, nullable=False, index=True),
+            Column('fingerprint_hash', String(64), nullable=False, index=True),
+            Column('device_name', String(255)),
+            Column('ip_address', String(45)),
+            Column('user_agent', Text),
+            Column('first_seen', DateTime, nullable=False),
+            Column('last_seen', DateTime, nullable=False),
+            Column('is_trusted', Boolean, default=True, nullable=False),
+            extend_existing=True
+        )
+        
+        self.device_challenges_table = Table(
+            'pass0_device_challenges',
+            metadata,
+            Column('id', Integer, primary_key=True),
+            Column('token', String(64), unique=True, nullable=False, index=True),
+            Column('user_id', Integer, nullable=False),
+            Column('fingerprint_hash', String(64), nullable=False),
+            Column('created_at', DateTime, nullable=False),
+            Column('expires_at', DateTime, nullable=False, index=True),
+            Column('used', Boolean, default=False, nullable=False),
+            extend_existing=True
+        )
+        
         metadata.create_all(self.session.get_bind(), checkfirst=True)
     
     def _hash_token(self, token):
-        """Hash token using HMAC-SHA256"""
         return hmac.new(
             self.secret_key.encode(),
             token.encode(),
@@ -197,66 +383,50 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
         return user.to_dict() if user and hasattr(user, 'to_dict') else user
     
     def get_or_create_user(self, email):
-        """Get existing user or create new one"""
         user = self.session.query(self.user_model).filter_by(email=email).first()
-        
         if not user:
             user = self.user_model(email=email)
             self.session.add(user)
             self.session.commit()
-        
         return user.to_dict() if hasattr(user, 'to_dict') else user
     
     def store_token(self, token, token_data):
-        """Store hashed token with expiry"""
         token_hash = self._hash_token(token)
-        
         self.session.execute(
             self.tokens_table.insert().values(
                 token_hash=token_hash,
                 email=token_data.get('email'),
                 next_url=token_data.get('next_url'),
                 used=False,
-                created_at=datetime.utcnow(),
-                expires_at=datetime.utcnow() + timedelta(minutes=self.token_expiry)
+                created_at=datetime.now(timezone.utc),
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=self.token_expiry)
             )
         )
         self.session.commit()
     
     def get_token(self, token):
-        """Verify and consume token atomically (single-use)"""
         token_hash = self._hash_token(token)
-        
-        # Get token if valid and not used
         result = self.session.execute(
             self.tokens_table.select().where(
                 self.tokens_table.c.token_hash == token_hash,
                 self.tokens_table.c.used == False,
-                self.tokens_table.c.expires_at > datetime.utcnow()
+                self.tokens_table.c.expires_at > datetime.now(timezone.utc)
             )
         ).fetchone()
         
         if not result:
             return None
         
-        # Mark as used immediately (single-use enforcement)
         self.session.execute(
             self.tokens_table.update().where(
                 self.tokens_table.c.token_hash == token_hash
-            ).values(
-                used=True,
-                used_at=datetime.utcnow()
-            )
+            ).values(used=True, used_at=datetime.now(timezone.utc))
         )
         self.session.commit()
         
-        return {
-            'email': result.email,
-            'next_url': result.next_url
-        }
+        return {'email': result.email, 'next_url': result.next_url}
     
     def delete_token(self, token):
-        """Delete token (already marked as used in get_token)"""
         token_hash = self._hash_token(token)
         self.session.execute(
             self.tokens_table.delete().where(
@@ -265,17 +435,220 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
         )
         self.session.commit()
     
-    def cleanup_expired_tokens(self, days=7):
-        """Remove old tokens - call periodically via cron"""
-        cutoff = datetime.utcnow() - timedelta(days=days)
+    def is_2fa_enabled(self, user_id):
+        result = self.session.execute(
+            self.totp_secrets_table.select().where(
+                self.totp_secrets_table.c.user_id == user_id
+            )
+        ).fetchone()
+        return result is not None
+    
+    def get_2fa_secret(self, user_id):
+        result = self.session.execute(
+            self.totp_secrets_table.select().where(
+                self.totp_secrets_table.c.user_id == user_id
+            )
+        ).fetchone()
+        
+        if result:
+            return self.cipher.decrypt(result.secret_encrypted.encode()).decode()
+        return None
+    
+    def enable_2fa(self, user_id, secret, backup_codes):
+        encrypted = self.cipher.encrypt(secret.encode()).decode()
         self.session.execute(
-            self.tokens_table.delete().where(
-                self.tokens_table.c.created_at < cutoff
+            self.totp_secrets_table.insert().values(
+                user_id=user_id,
+                secret_encrypted=encrypted,
+                enabled_at=datetime.now(timezone.utc)
+            )
+        )
+        
+        for code_hash in backup_codes:
+            self.session.execute(
+                self.backup_codes_table.insert().values(
+                    user_id=user_id,
+                    code_hash=code_hash,
+                    used=False,
+                    created_at=datetime.now(timezone.utc)
+                )
+            )
+        
+        self.session.commit()
+    
+    def disable_2fa(self, user_id):
+        self.session.execute(
+            self.totp_secrets_table.delete().where(
+                self.totp_secrets_table.c.user_id == user_id
+            )
+        )
+        self.session.execute(
+            self.backup_codes_table.delete().where(
+                self.backup_codes_table.c.user_id == user_id
             )
         )
         self.session.commit()
+    
+    def validate_backup_code(self, user_id, code_hash):
+        result = self.session.execute(
+            self.backup_codes_table.select().where(
+                self.backup_codes_table.c.user_id == user_id,
+                self.backup_codes_table.c.code_hash == code_hash,
+                self.backup_codes_table.c.used == False
+            )
+        ).fetchone()
+        
+        if not result:
+            return False
+        
+        self.session.execute(
+            self.backup_codes_table.update().where(
+                self.backup_codes_table.c.id == result.id
+            ).values(used=True)
+        )
+        self.session.commit()
+        return True
+    
+    def regenerate_backup_codes(self, user_id, new_codes):
+        self.session.execute(
+            self.backup_codes_table.delete().where(
+                self.backup_codes_table.c.user_id == user_id
+            )
+        )
+        
+        for code_hash in new_codes:
+            self.session.execute(
+                self.backup_codes_table.insert().values(
+                    user_id=user_id,
+                    code_hash=code_hash,
+                    used=False,
+                    created_at=datetime.now(timezone.utc)
+                )
+            )
+        
+        self.session.commit()
+    
+    def store_2fa_code(self, code_data):
+        self.session.execute(
+            self.email_2fa_codes_table.insert().values(
+                user_id=code_data['user_id'],
+                code_hash=code_data['code_hash'],
+                created_at=code_data['created_at'],
+                expires_at=code_data['expires_at'],
+                used=False
+            )
+        )
+        self.session.commit()
+    
+    def verify_2fa_code(self, user_id, code_hash):
+        result = self.session.execute(
+            self.email_2fa_codes_table.select().where(
+                self.email_2fa_codes_table.c.user_id == user_id,
+                self.email_2fa_codes_table.c.code_hash == code_hash,
+                self.email_2fa_codes_table.c.used == False,
+                self.email_2fa_codes_table.c.expires_at > datetime.now(timezone.utc)
+            )
+        ).fetchone()
+        
+        if not result:
+            return False
+        
+        self.session.execute(
+            self.email_2fa_codes_table.update().where(
+                self.email_2fa_codes_table.c.id == result.id
+            ).values(used=True)
+        )
+        self.session.commit()
+        return True
+    
+    def is_device_trusted(self, user_id, fingerprint_hash):
+        result = self.session.execute(
+            self.trusted_devices_table.select().where(
+                self.trusted_devices_table.c.user_id == user_id,
+                self.trusted_devices_table.c.fingerprint_hash == fingerprint_hash,
+                self.trusted_devices_table.c.is_trusted == True
+            )
+        ).fetchone()
+        return result is not None
+    
+    def add_trusted_device(self, device_data):
+        self.session.execute(
+            self.trusted_devices_table.insert().values(
+                user_id=device_data['user_id'],
+                fingerprint_hash=device_data['fingerprint_hash'],
+                device_name=device_data['device_name'],
+                ip_address=device_data.get('ip_address'),
+                user_agent=device_data.get('user_agent'),
+                first_seen=device_data['first_seen'],
+                last_seen=device_data['last_seen'],
+                is_trusted=device_data.get('is_trusted', True)
+            )
+        )
+        self.session.commit()
+    
+    def get_trusted_devices(self, user_id):
+        results = self.session.execute(
+            self.trusted_devices_table.select().where(
+                self.trusted_devices_table.c.user_id == user_id,
+                self.trusted_devices_table.c.is_trusted == True
+            ).order_by(self.trusted_devices_table.c.last_seen.desc())
+        ).fetchall()
+        
+        return [dict(row._mapping) for row in results]
+    
+    def update_device_last_seen(self, user_id, fingerprint_hash):
+        self.session.execute(
+            self.trusted_devices_table.update().where(
+                self.trusted_devices_table.c.user_id == user_id,
+                self.trusted_devices_table.c.fingerprint_hash == fingerprint_hash
+            ).values(last_seen=datetime.now(timezone.utc))
+        )
+        self.session.commit()
+    
+    def revoke_device(self, user_id, device_id):
+        self.session.execute(
+            self.trusted_devices_table.delete().where(
+                self.trusted_devices_table.c.id == device_id,
+                self.trusted_devices_table.c.user_id == user_id
+            )
+        )
+        self.session.commit()
+    
+    def store_device_challenge(self, challenge_data):
+        self.session.execute(
+            self.device_challenges_table.insert().values(
+                token=challenge_data['token'],
+                user_id=challenge_data['user_id'],
+                fingerprint_hash=challenge_data['fingerprint_hash'],
+                created_at=challenge_data['created_at'],
+                expires_at=challenge_data['expires_at'],
+                used=False
+            )
+        )
+        self.session.commit()
+    
+    def verify_device_challenge(self, token):
+        result = self.session.execute(
+            self.device_challenges_table.select().where(
+                self.device_challenges_table.c.token == token,
+                self.device_challenges_table.c.used == False,
+                self.device_challenges_table.c.expires_at > datetime.now(timezone.utc)
+            )
+        ).fetchone()
+        
+        if not result:
+            return None
+        
+        self.session.execute(
+            self.device_challenges_table.update().where(
+                self.device_challenges_table.c.token == token
+            ).values(used=True)
+        )
+        self.session.commit()
+        
+        return dict(result._mapping)
 
 
-# Legacy in-memory storage for backward compatibility
+# Legacy storage
 _users = {}
 _tokens = {}
