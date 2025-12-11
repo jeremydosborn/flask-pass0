@@ -105,8 +105,6 @@ app.config['PASS0_SKIP_DEVICE_IF_2FA'] = True  # Skip if user has 2FA enabled
 | `PASS0_SKIP_DEVICE_IF_2FA` | `True` | Skip device approval if user has 2FA |
 | `PASS0_DEVICE_CHALLENGE_EXPIRY` | `900` | Device approval link expiry in seconds |
 
-Full configuration reference: [CONFIGURATION.md](CONFIGURATION.md)
-
 ## Routes
 
 Flask-Pass0 automatically registers these routes:
