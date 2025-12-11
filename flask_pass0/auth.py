@@ -1,11 +1,11 @@
-from flask import Blueprint, session, redirect, url_for, render_template, request, current_app, jsonify
+from flask import Blueprint, session, redirect, url_for, request, current_app, jsonify
 import time
 from .magic_link import generate_magic_link, verify_magic_link, get_or_create_user
 from .storage import InMemoryStorageAdapter
 from .two_factor import TwoFactorAuth
 from .device_binding import DeviceBinding
 from functools import wraps
-
+from urllib.parse import urlparse
 
 class Pass0:
     """Passwordless authentication for Flask with optional 2FA and device binding."""
@@ -37,7 +37,8 @@ class Pass0:
         """Initialize the extension with Flask app."""
         app.config.setdefault('PASS0_TOKEN_EXPIRY', 10)
         app.config.setdefault('PASS0_REDIRECT_URL', '/')
-        app.config.setdefault('PASS0_LOGIN_URL', '/auth/login')
+        # Host app's login UI route (used by login stub + logout redirect)
+        app.config.setdefault('PASS0_LOGIN_URL', '/login')
         app.config.setdefault('PASS0_DEV_MODE', False)
         app.config.setdefault('PASS0_SESSION_DURATION', 24 * 60 * 60)
         
@@ -73,7 +74,8 @@ class Pass0:
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not self.is_authenticated():
-                session['next'] = request.url
+                # Store internal path only; redirect target will be safely resolved later
+                session['next'] = request.full_path
                 return redirect(url_for('pass0.login'))
             return f(*args, **kwargs)
         return decorated_function
@@ -118,33 +120,24 @@ class Pass0:
             fingerprint_hash = self.device_binding.hash_fingerprint(fingerprint)
             
             if not self.device_binding.is_device_trusted(user_id, fingerprint_hash):
-                # Check if auto-approve is enabled (dev/test mode only)
-                if current_app.config.get('PASS0_AUTO_APPROVE_DEVICES', False):
-                    # Auto-approve device without email (insecure - test only)
-                    self.device_binding.add_trusted_device(user_id, fingerprint, fingerprint_hash)
-                    print(f"\n⚠️  AUTO-APPROVED new device (PASS0_AUTO_APPROVE_DEVICES=True)")
-                    print(f"   Device: {self.device_binding.get_device_name(fingerprint)}")
-                    print(f"   This setting should NEVER be used in production!\n")
-                else:
-                    # Production: require email approval
-                    session['pending_device_fingerprint'] = fingerprint
-                    session['pending_device_hash'] = fingerprint_hash
-                    
-                    approval_token = self.device_binding.generate_device_approval_token(
-                        user_id, fingerprint_hash
-                    )
-                    approval_url = url_for('pass0.approve_device', token=approval_token, _external=True)
-                    
-                    user_email = user.get('email')
-                    self.device_binding.send_device_approval_email(
-                        user_email, user_id, fingerprint, approval_url
-                    )
-                    
-                    return {
-                        'allow': False,
-                        'redirect': 'pass0.device_approval_required',
-                        'reason': 'unrecognized_device'
-                    }
+                session['pending_device_fingerprint'] = fingerprint
+                session['pending_device_hash'] = fingerprint_hash
+                
+                approval_token = self.device_binding.generate_device_approval_token(
+                    user_id, fingerprint_hash
+                )
+                approval_url = url_for('pass0.approve_device', token=approval_token, _external=True)
+                
+                user_email = user.get('email')
+                self.device_binding.send_device_approval_email(
+                    user_email, user_id, fingerprint, approval_url
+                )
+                
+                return {
+                    'allow': False,
+                    'redirect': 'pass0.device_approval_required',
+                    'reason': 'unrecognized_device'
+                }
             else:
                 self.device_binding.update_device_last_seen(user_id, fingerprint_hash)
         
@@ -170,13 +163,48 @@ class Pass0:
         
         return {'allow': True, 'redirect': None, 'reason': 'authenticated'}
     
+    def _resolve_next_url(self, raw_value, default=None):
+        """
+        Resolve a user-provided or stored redirect target safely.
+
+        - Only allows internal paths like "/dashboard?x=1"
+        - Rejects absolute URLs and weird paths
+        """
+        if default is None:
+            default = current_app.config.get('PASS0_REDIRECT_URL', '/')
+
+        if not raw_value:
+            return default
+
+        parsed = urlparse(raw_value)
+
+        # Reject absolute URLs: http://evil.com, //evil.com, etc.
+        if parsed.scheme or parsed.netloc:
+            return default
+
+        # Require a normal internal path
+        if not parsed.path.startswith('/'):
+            return default
+
+        # Normalize path + query, ignore fragment
+        path = parsed.path
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+
+        return path
+
     def _register_routes(self):
         """Register authentication routes on the blueprint."""
         
         @self.blueprint.route('/login')
         def login():
-            """Display login page."""
-            return render_template('auth.html')
+            """
+            Redirect to the application's login UI.
+
+            Pass0 does not render templates; the host app is responsible for the UI.
+            """
+            target = current_app.config.get('PASS0_LOGIN_URL', '/login')
+            return redirect(target)
         
         @self.blueprint.route('/request-magic-link', methods=['POST'])
         def request_magic_link():
@@ -236,8 +264,9 @@ class Pass0:
                     if not self.device_binding.is_device_trusted(user_id, fingerprint_hash):
                         self.device_binding.add_trusted_device(user_id, fingerprint, fingerprint_hash)
             
-            next_url = result.get('next_url') or session.pop('next', None) or \
-                      request.args.get('next') or current_app.config.get('PASS0_REDIRECT_URL', '/')
+            # Safe redirect target resolution: no request.args['next'], internal paths only
+            raw_next = result.get('next_url') or session.pop('next', None)
+            next_url = self._resolve_next_url(raw_next)
             return redirect(next_url)
         
         # ==================== 2FA Routes ====================
@@ -304,7 +333,11 @@ class Pass0:
             user_id = session.get('2fa_user_id')
             
             if request.method == 'GET':
-                return render_template('2fa_verify.html')
+                # No template rendering in the package; host app provides UI.
+                return jsonify({
+                    'two_factor_required': True,
+                    'user_id': user_id
+                })
             
             data = request.get_json()
             code = data.get('code')
@@ -422,7 +455,7 @@ class Pass0:
         def logout():
             """Log the user out by clearing the session."""
             session.clear()
-            return redirect(current_app.config.get('PASS0_LOGIN_URL', '/auth/login'))
+            return redirect(current_app.config.get('PASS0_LOGIN_URL', '/login'))
     
     def on_user_created(self, user):
         """Called when a new user is created."""

@@ -1,6 +1,9 @@
+---
+
+````markdown
 # Flask-Pass0
 
-Passwordless authentication for Flask with magic links, 2FA, and device binding. Alpha version, still in dev, not production ready.
+Passwordless authentication for Flask with magic links, 2FA, and device binding. Alpha version, still in development, not production-ready.
 
 ## Installation
 
@@ -8,7 +11,8 @@ Passwordless authentication for Flask with magic links, 2FA, and device binding.
 pip install flask-pass0
 ```
 
-For all features:
+For all optional features:
+
 ```bash
 pip install flask-pass0[all]
 ```
@@ -46,28 +50,28 @@ if __name__ == '__main__':
 
 ## Features
 
-- Passwordless authentication via magic links
-- Two-factor authentication with TOTP
-- Device fingerprinting and trusted device management
-- Built-in session management
-- SQLAlchemy storage adapter included
+* Passwordless authentication via magic links  
+* Two-factor authentication (TOTP)  
+* Device fingerprinting + trusted device management  
+* Built-in session handling (login, expiration, logout)  
+* SQLAlchemy storage adapter  
+* Safe redirect handling (same-site only)
+
+---
 
 ## Configuration
 
 ### Development Mode
 
 ```python
-app.config['PASS0_DEV_MODE'] = True  # Print magic links to console
-app.config['PASS0_AUTO_APPROVE_DEVICES'] = True  # Skip device approval emails
+app.config['PASS0_DEV_MODE'] = True  # Magic links returned in JSON
 ```
 
-### Production Settings
+### Production Email Settings
 
 ```python
 app.config['PASS0_DEV_MODE'] = False
-app.config['PASS0_AUTO_APPROVE_DEVICES'] = False
 
-# Email configuration
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
@@ -80,7 +84,7 @@ app.config['MAIL_DEFAULT_SENDER'] = 'noreply@yourapp.com'
 
 ```python
 app.config['PASS0_2FA_ENABLED'] = True
-app.config['PASS0_2FA_REQUIRED'] = False  # Set True to force all users
+app.config['PASS0_2FA_REQUIRED'] = False
 app.config['PASS0_TOTP_ISSUER'] = 'YourApp'
 ```
 
@@ -88,62 +92,97 @@ app.config['PASS0_TOTP_ISSUER'] = 'YourApp'
 
 ```python
 app.config['PASS0_DEVICE_BINDING_ENABLED'] = True
-app.config['PASS0_SKIP_DEVICE_IF_2FA'] = True  # Skip if user has 2FA enabled
+app.config['PASS0_SKIP_DEVICE_IF_2FA'] = True
 ```
+
+Unknown devices always require email approval. Pass0 never auto-trusts devices.
+
+### Login + Redirect URLs
+
+```python
+app.config['PASS0_REDIRECT_URL'] = '/'
+app.config['PASS0_LOGIN_URL'] = '/login'
+
+app.config['PASS0_SESSION_DURATION'] = 24 * 60 * 60  # seconds
+app.config['PASS0_TOKEN_EXPIRY'] = 10                # minutes
+```
+
+---
 
 ## Configuration Reference
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `PASS0_DEV_MODE` | `False` | Print magic links to console instead of sending email |
-| `PASS0_AUTO_APPROVE_DEVICES` | `False` | Auto-approve new devices without email (dev/testing only) |
-| `PASS0_MAGIC_LINK_EXPIRY` | `900` | Magic link expiry in seconds (15 minutes) |
-| `PASS0_2FA_ENABLED` | `False` | Enable two-factor authentication |
-| `PASS0_2FA_REQUIRED` | `False` | Require all users to enable 2FA |
-| `PASS0_TOTP_ISSUER` | `'Flask-Pass0'` | Name shown in authenticator apps |
-| `PASS0_DEVICE_BINDING_ENABLED` | `False` | Enable device fingerprinting |
-| `PASS0_SKIP_DEVICE_IF_2FA` | `True` | Skip device approval if user has 2FA |
-| `PASS0_DEVICE_CHALLENGE_EXPIRY` | `900` | Device approval link expiry in seconds |
+| Option                          | Default         | Description                                               |
+| ------------------------------- | --------------- | --------------------------------------------------------- |
+| `PASS0_DEV_MODE`                | `False`         | Magic link returned in JSON instead of email             |
+| `PASS0_TOKEN_EXPIRY`            | `10`            | Magic link expiry (minutes)                              |
+| `PASS0_REDIRECT_URL`            | `'/'`           | Default redirect after login                             |
+| `PASS0_LOGIN_URL`               | `'/login'`      | Your app’s login route                                   |
+| `PASS0_SESSION_DURATION`        | `86400`         | Max session age (seconds)                                |
+| `PASS0_2FA_ENABLED`             | `False`         | Enable 2FA                                                |
+| `PASS0_2FA_REQUIRED`            | `False`         | Require all users to enable 2FA                          |
+| `PASS0_TOTP_ISSUER`             | `'Flask-Pass0'` | Issuer name in authenticator apps                        |
+| `PASS0_DEVICE_BINDING_ENABLED`  | `False`         | Enable device fingerprinting                              |
+| `PASS0_SKIP_DEVICE_IF_2FA`      | `True`          | Skip device checks if user has 2FA                       |
+| `PASS0_DEVICE_CHALLENGE_EXPIRY` | `900`           | Device approval expiry (seconds)                         |
 
-## Routes
+---
 
-Flask-Pass0 automatically registers these routes:
+## Routes (Auto-Registered Under `/auth`)
 
-**Authentication:**
-- `GET /auth/login` - Login page
-- `POST /auth/request-magic-link` - Request magic link
-- `GET /auth/verify/<token>` - Verify magic link
-- `GET /auth/logout` - Logout
+### Authentication
 
-**Two-Factor Authentication:**
-- `GET /auth/2fa/setup` - Setup 2FA
-- `POST /auth/2fa/setup` - Verify 2FA setup
-- `GET /auth/2fa/verify` - 2FA verification page
-- `POST /auth/2fa/verify` - Verify 2FA code
-- `POST /auth/2fa/disable` - Disable 2FA
-- `GET/POST /auth/2fa/backup-codes` - Manage backup codes
+* `GET /auth/login` — Redirects to your app’s login UI (`PASS0_LOGIN_URL`)
+* `POST /auth/request-magic-link` — Request magic link (JSON)
+* `GET /auth/verify/<token>` — Verify link → device check → 2FA → login
+* `GET /auth/logout` — Clears session
 
-**Device Management:**
-- `GET /auth/devices` - List trusted devices
-- `POST /auth/devices/<id>/revoke` - Revoke device
-- `GET /auth/device/approve/<token>` - Approve device
+### 2FA Routes
 
-## Templates
+* `GET /auth/2fa/setup`
+* `POST /auth/2fa/setup`
+* `GET /auth/2fa/verify`
+* `POST /auth/2fa/verify`
+* `POST /auth/2fa/disable`
+* `GET/POST /auth/2fa/backup-codes`
 
-You must provide these templates in your app's `templates/` folder:
+### Device Binding Routes
 
-- `auth.html` - Login page
-- `dashboard.html` - User dashboard (optional)
-- `2fa_verify.html` - 2FA verification page (if 2FA enabled)
+* `GET /auth/device-approval-required`
+* `GET /auth/device/approve/<token>`
+* `GET /auth/devices`
+* `POST /auth/devices/<id>/revoke`
 
-See `examples/` for reference implementations.
+---
+
+## Templates / UI
+
+Flask-Pass0 **does not include templates**. Your app renders the UI.
+
+Example:
+
+```python
+@app.route('/login')
+def login_page():
+    user = get_current_user()
+    if user:
+        return redirect('/')
+    return render_template('auth.html')
+```
+
+You typically provide:
+
+* `auth.html` — sends email to `/auth/request-magic-link`
+* `2fa_verify.html` — calls `/auth/2fa/verify`
+* `dashboard.html`
+
+---
 
 ## Usage
 
 ### Protect Routes
 
 ```python
-from flask_pass0 import login_required, get_current_user
+from flask_pass0.utils import login_required, get_current_user
 
 @app.route('/dashboard')
 @login_required
@@ -152,58 +191,58 @@ def dashboard():
     return f"Hello {user['email']}"
 ```
 
-### Check Authentication
+### Manual Check
 
 ```python
-from flask_pass0 import is_authenticated
+from flask_pass0.utils import is_authenticated
 
 @app.route('/profile')
 def profile():
     if not is_authenticated():
         return redirect('/auth/login')
-    user = get_current_user()
-    return render_template('profile.html', user=user)
+    return render_template('profile.html', user=get_current_user())
 ```
 
 ### Logout
 
 ```python
-from flask_pass0 import logout
+from flask_pass0.utils import logout
 
 @app.route('/signout')
 def signout():
-    logout()
-    return redirect('/')
+    return logout()
 ```
+
+---
 
 ## Dependencies
 
-**Required:**
-- Flask >= 2.0.0
-- Flask-SQLAlchemy >= 2.5.0
+**Required**
 
-**Optional (install with `flask-pass0[all]`):**
-- pyotp - For 2FA
-- qrcode[pil] - For QR code generation
-- cryptography - For encrypting secrets
-- user-agents - For device fingerprinting
-- Flask-Mail - For sending emails
+* Flask >= 2.0.0
+* Flask-SQLAlchemy >= 2.5.0
+
+**Optional (`pip install flask-pass0[all]`)**
+
+* pyotp  
+* qrcode[pil]  
+* cryptography  
+* user-agents  
+* Flask-Mail  
+
+---
 
 ## Security
 
-Flask-Pass0 uses cryptographically secure tokens and industry-standard encryption:
+* Token entropy: ~256 bits  
+* Tokens: HMAC-SHA256 + single-use  
+* 2FA secrets encrypted  
+* Backup codes hashed  
+* Device fingerprints hashed  
+* Redirects restricted to same-site paths  
+* Sessions stored in Flask-signed cookies and expire using `PASS0_SESSION_DURATION`
 
-- Magic link tokens: secrets.token_urlsafe (256-bit entropy)
-- Token storage: HMAC-SHA256 hashing
-- 2FA secrets: Fernet encryption (AES-128)
-- Backup codes: SHA-256 hashing
-- Device fingerprints: SHA-256 hashing
-- Sessions: Flask's signed cookies
-
-**Production requirements:**
-- HTTPS enabled
-- Strong `SECRET_KEY` (use `secrets.token_hex(32)`)
-- Secure session cookies:
+**Production:**
 
 ```python
 app.config['SESSION_COOKIE_SECURE'] = True
@@ -211,14 +250,21 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 ```
 
+---
+
 ## Examples
 
-See the `examples/` directory for complete working applications.
+See the `examples/` directory for a working demo using magic links, 2FA, device binding, and security logging.
+
+---
 
 ## License
 
-MIT License - see LICENSE file
+MIT License.
 
 ## Contributing
 
-Issues and pull requests welcome at https://github.com/jeremydosborn/flask-pass0
+PRs welcome at:  
+https://github.com/jeremydosborn/flask-pass0
+````
+---
