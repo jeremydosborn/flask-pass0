@@ -1,4 +1,4 @@
-# Flask-Pass0
+# flask-pass0
 
 Passwordless authentication for Flask with magic links, 2FA, and device binding. Alpha version, still in development, not production-ready.
 
@@ -153,7 +153,7 @@ app.config['PASS0_TOKEN_EXPIRY'] = 10                # minutes
 
 ## Templates / UI
 
-Flask-Pass0 **does not include templates**. Your app renders the UI.
+flask-pass0 **does not include templates**. Your app renders the UI.
 
 Example:
 
