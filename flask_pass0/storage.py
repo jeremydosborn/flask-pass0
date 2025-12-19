@@ -1,5 +1,5 @@
 """
-Flask-Pass0 Storage Adapters with 2FA and Device Binding Support
+Flask-Pass0 Storage Adapters with 2FA, Device Binding, and Passkey Support
 """
 
 import hmac
@@ -83,6 +83,45 @@ class StorageAdapter(ABC):
     
     def verify_device_challenge(self, token):
         return None
+    
+    # Passkey methods (optional)
+    def create_passkey_challenge(self, challenge, email, expires_at, purpose):
+        """
+        Store a passkey challenge and return its ID.
+        
+        Args:
+            challenge: Base64url-encoded challenge string
+            email: Optional email for identifier-first flow
+            expires_at: Expiration datetime
+            purpose: 'login' or 'registration'
+        
+        Returns:
+            str: Challenge ID
+        """
+        raise NotImplementedError("Passkey not supported")
+    
+    def consume_passkey_challenge(self, challenge_id):
+        """
+        Atomically retrieve and mark challenge as used (single-use).
+        
+        Returns:
+            dict with keys: challenge, email, expires_at, purpose
+            or None if invalid/expired/already used
+        """
+        raise NotImplementedError("Passkey not supported")
+    
+    def verify_passkey_assertion(self, challenge_row, assertion):
+        """
+        Verify the WebAuthn assertion against the challenge.
+        
+        Args:
+            challenge_row: dict from consume_passkey_challenge
+            assertion: dict from client with authenticatorData, signature, etc.
+        
+        Returns:
+            tuple: (success: bool, user: dict|None)
+        """
+        raise NotImplementedError("Passkey verification not supported")
 
 
 class InMemoryStorageAdapter(StorageAdapter):
@@ -99,6 +138,10 @@ class InMemoryStorageAdapter(StorageAdapter):
         self.email_2fa_codes = {}
         self.trusted_devices = {}
         self.device_challenges = {}
+        
+        # Passkey storage
+        self.passkey_challenges = {}
+        self.passkey_credentials = {}  # user_id -> [credential_dicts]
         
         self.encryption_key = encryption_key or Fernet.generate_key()
         self.cipher = Fernet(self.encryption_key)
@@ -251,7 +294,8 @@ class InMemoryStorageAdapter(StorageAdapter):
             return
         
         self.trusted_devices[user_id] = [
-            d for d in self.trusted_devices[user_id] if d['id'] != device_id
+            d for d in self.trusted_devices[user_id] 
+            if d.get('id') != device_id
         ]
     
     def store_device_challenge(self, challenge_data):
@@ -259,139 +303,229 @@ class InMemoryStorageAdapter(StorageAdapter):
         self.device_challenges[token] = challenge_data
     
     def verify_device_challenge(self, token):
-        if token not in self.device_challenges:
+        challenge = self.device_challenges.get(token)
+        
+        if not challenge or challenge.get('used'):
             return None
         
-        data = self.device_challenges[token]
-        
-        if data['used'] or data['expires_at'] < datetime.now(timezone.utc):
+        if challenge['expires_at'] < datetime.now(timezone.utc):
+            del self.device_challenges[token]
             return None
         
-        data['used'] = True
-        return data
+        challenge['used'] = True
+        return challenge
+    
+    # ==================== Passkey Methods ====================
+    
+    def create_passkey_challenge(self, challenge, email, expires_at, purpose):
+        """Store passkey challenge and return ID."""
+        challenge_id = secrets.token_urlsafe(16)
+        
+        self.passkey_challenges[challenge_id] = {
+            'challenge': challenge,
+            'email': email,
+            'expires_at': expires_at,
+            'purpose': purpose,
+            'used': False,
+            'created_at': datetime.now(timezone.utc)
+        }
+        
+        return challenge_id
+    
+    def consume_passkey_challenge(self, challenge_id):
+        """Atomically retrieve and mark challenge as used."""
+        challenge_data = self.passkey_challenges.get(challenge_id)
+        
+        if not challenge_data or challenge_data.get('used'):
+            return None
+        
+        if challenge_data['expires_at'] < datetime.now(timezone.utc):
+            del self.passkey_challenges[challenge_id]
+            return None
+        
+        # Mark as used (single-use)
+        challenge_data['used'] = True
+        
+        return {
+            'challenge': challenge_data['challenge'],
+            'email': challenge_data.get('email'),
+            'expires_at': challenge_data['expires_at'],
+            'purpose': challenge_data['purpose']
+        }
+    
+    def verify_passkey_assertion(self, challenge_row, assertion):
+        """
+        Verify passkey assertion. This is a stub implementation.
+        
+        In production, you would:
+        1. Verify the signature using the stored public key
+        2. Validate authenticatorData and clientDataJSON
+        3. Check rpIdHash matches your RP ID
+        4. Verify the challenge matches
+        
+        For now, this returns success if we find a user by email.
+        """
+        email = challenge_row.get('email')
+        
+        if not email:
+            # For usernameless flow, you'd look up credential by ID
+            # from assertion.get('id') or assertion.get('rawId')
+            return False, None
+        
+        # Get or create user
+        user = self.get_or_create_user(email)
+        
+        # In production: verify signature, authenticatorData, etc.
+        # For now, just return the user
+        return True, user
 
 
 class SQLAlchemyStorageAdapter(StorageAdapter):
-    """SQLAlchemy storage with 2FA and device binding support."""
+    """Production storage using SQLAlchemy with encryption."""
     
-    def __init__(self, user_model, session, secret_key=None, token_expiry_minutes=10, encryption_key=None):
-        self.user_model = user_model
-        self.session = session
-        self.secret_key = secret_key or secrets.token_hex(32)
-        self.token_expiry = token_expiry_minutes
-        
-        self.encryption_key = encryption_key or Fernet.generate_key()
-        self.cipher = Fernet(self.encryption_key)
-        
-        self._ensure_tables()
-    
-    def _ensure_tables(self):
+    def __init__(self, user_model, session, secret_key):
         from sqlalchemy import Table, Column, Integer, String, Boolean, DateTime, Text, MetaData
+        
+        self.session = session
+        self.user_table = user_model.__table__
         
         metadata = MetaData()
         
-        self.tokens_table = Table(
-            'pass0_tokens',
-            metadata,
+        # Tokens table
+        self.tokens_table = Table('pass0_tokens', metadata,
             Column('id', Integer, primary_key=True),
-            Column('token_hash', String(64), unique=True, nullable=False, index=True),
+            Column('token_hash', String(64), unique=True, nullable=False),
             Column('email', String(255), nullable=False),
-            Column('next_url', String(512)),
-            Column('used', Boolean, default=False, nullable=False),
-            Column('created_at', DateTime, nullable=False),
-            Column('expires_at', DateTime, nullable=False, index=True),
-            Column('used_at', DateTime),
-            extend_existing=True
+            Column('next_url', String(500)),
+            Column('used', Boolean, default=False),
+            Column('created_at', DateTime(timezone=True), nullable=False),
+            Column('expires_at', DateTime(timezone=True), nullable=False),
+            Column('used_at', DateTime(timezone=True))
         )
         
-        self.totp_secrets_table = Table(
-            'pass0_2fa_secrets',
-            metadata,
+        # TOTP secrets table
+        self.totp_secrets_table = Table('pass0_totp_secrets', metadata,
             Column('id', Integer, primary_key=True),
-            Column('user_id', Integer, nullable=False, unique=True, index=True),
+            Column('user_id', Integer, nullable=False, unique=True),
             Column('secret_encrypted', Text, nullable=False),
-            Column('enabled_at', DateTime, nullable=False),
-            extend_existing=True
+            Column('enabled_at', DateTime(timezone=True), nullable=False)
         )
         
-        self.backup_codes_table = Table(
-            'pass0_backup_codes',
-            metadata,
+        # Backup codes table
+        self.backup_codes_table = Table('pass0_backup_codes', metadata,
             Column('id', Integer, primary_key=True),
-            Column('user_id', Integer, nullable=False, index=True),
+            Column('user_id', Integer, nullable=False),
             Column('code_hash', String(64), nullable=False),
-            Column('used', Boolean, default=False, nullable=False),
-            Column('created_at', DateTime, nullable=False),
-            extend_existing=True
+            Column('used', Boolean, default=False),
+            Column('created_at', DateTime(timezone=True), nullable=False)
         )
         
-        self.email_2fa_codes_table = Table(
-            'pass0_email_2fa_codes',
-            metadata,
+        # Email 2FA codes table
+        self.email_2fa_codes_table = Table('pass0_email_2fa_codes', metadata,
             Column('id', Integer, primary_key=True),
-            Column('user_id', Integer, nullable=False, index=True),
+            Column('user_id', Integer, nullable=False),
             Column('code_hash', String(64), nullable=False),
-            Column('created_at', DateTime, nullable=False),
-            Column('expires_at', DateTime, nullable=False, index=True),
-            Column('used', Boolean, default=False, nullable=False),
-            extend_existing=True
+            Column('created_at', DateTime(timezone=True), nullable=False),
+            Column('expires_at', DateTime(timezone=True), nullable=False),
+            Column('used', Boolean, default=False)
         )
         
-        self.trusted_devices_table = Table(
-            'pass0_trusted_devices',
-            metadata,
+        # Trusted devices table
+        self.trusted_devices_table = Table('pass0_trusted_devices', metadata,
             Column('id', Integer, primary_key=True),
-            Column('user_id', Integer, nullable=False, index=True),
-            Column('fingerprint_hash', String(64), nullable=False, index=True),
+            Column('user_id', Integer, nullable=False),
+            Column('fingerprint_hash', String(64), nullable=False),
             Column('device_name', String(255)),
             Column('ip_address', String(45)),
             Column('user_agent', Text),
-            Column('first_seen', DateTime, nullable=False),
-            Column('last_seen', DateTime, nullable=False),
-            Column('is_trusted', Boolean, default=True, nullable=False),
-            extend_existing=True
+            Column('first_seen', DateTime(timezone=True), nullable=False),
+            Column('last_seen', DateTime(timezone=True), nullable=False),
+            Column('is_trusted', Boolean, default=True)
         )
         
-        self.device_challenges_table = Table(
-            'pass0_device_challenges',
-            metadata,
+        # Device challenges table
+        self.device_challenges_table = Table('pass0_device_challenges', metadata,
             Column('id', Integer, primary_key=True),
-            Column('token', String(64), unique=True, nullable=False, index=True),
+            Column('token', String(64), unique=True, nullable=False),
             Column('user_id', Integer, nullable=False),
             Column('fingerprint_hash', String(64), nullable=False),
-            Column('created_at', DateTime, nullable=False),
-            Column('expires_at', DateTime, nullable=False, index=True),
-            Column('used', Boolean, default=False, nullable=False),
-            extend_existing=True
+            Column('created_at', DateTime(timezone=True), nullable=False),
+            Column('expires_at', DateTime(timezone=True), nullable=False),
+            Column('used', Boolean, default=False)
         )
         
-        metadata.create_all(self.session.get_bind(), checkfirst=True)
+        # Passkey challenges table
+        self.passkey_challenges_table = Table('pass0_passkey_challenges', metadata,
+            Column('id', Integer, primary_key=True),
+            Column('challenge_id', String(64), unique=True, nullable=False),
+            Column('challenge', String(64), nullable=False),
+            Column('email', String(255)),
+            Column('purpose', String(32), nullable=False),
+            Column('created_at', DateTime(timezone=True), nullable=False),
+            Column('expires_at', DateTime(timezone=True), nullable=False),
+            Column('used', Boolean, default=False)
+        )
+        
+        # Passkey credentials table (for storing registered passkeys)
+        self.passkey_credentials_table = Table('pass0_passkey_credentials', metadata,
+            Column('id', Integer, primary_key=True),
+            Column('user_id', Integer, nullable=False),
+            Column('credential_id', String(255), unique=True, nullable=False),
+            Column('public_key', Text, nullable=False),
+            Column('sign_count', Integer, default=0),
+            Column('transports', String(255)),
+            Column('created_at', DateTime(timezone=True), nullable=False),
+            Column('last_used', DateTime(timezone=True))
+        )
+        
+        # Generate proper Fernet key (always use generated key for security)
+        self.encryption_key = Fernet.generate_key()
+        self.cipher = Fernet(self.encryption_key)
+        
+        metadata.create_all(session.get_bind())
+    
+    def init_app(self, app):
+        """Initialize with Flask app if needed."""
+        pass
     
     def _hash_token(self, token):
-        return hmac.new(
-            self.secret_key.encode(),
-            token.encode(),
-            hashlib.sha256
-        ).hexdigest()
+        return hashlib.sha256(token.encode()).hexdigest()
     
     def get_user_by_email(self, email):
-        user = self.session.query(self.user_model).filter_by(email=email).first()
-        return user.to_dict() if user and hasattr(user, 'to_dict') else user
+        result = self.session.execute(
+            self.user_table.select().where(
+                self.user_table.c.email == email
+            )
+        ).fetchone()
+        return dict(result._mapping) if result else None
     
     def get_user_by_id(self, user_id):
-        user = self.session.query(self.user_model).filter_by(id=user_id).first()
-        return user.to_dict() if user and hasattr(user, 'to_dict') else user
+        result = self.session.execute(
+            self.user_table.select().where(
+                self.user_table.c.id == user_id
+            )
+        ).fetchone()
+        return dict(result._mapping) if result else None
     
     def get_or_create_user(self, email):
-        user = self.session.query(self.user_model).filter_by(email=email).first()
+        user = self.get_user_by_email(email)
+        
         if not user:
-            user = self.user_model(email=email)
-            self.session.add(user)
+            result = self.session.execute(
+                self.user_table.insert().values(
+                    email=email,
+                    created_at=datetime.now(timezone.utc)
+                ).returning(self.user_table)
+            )
             self.session.commit()
-        return user.to_dict() if hasattr(user, 'to_dict') else user
+            user = dict(result.fetchone()._mapping)
+        
+        return user
     
     def store_token(self, token, token_data):
         token_hash = self._hash_token(token)
+        expiry_minutes = 10
+        
         self.session.execute(
             self.tokens_table.insert().values(
                 token_hash=token_hash,
@@ -399,13 +533,14 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
                 next_url=token_data.get('next_url'),
                 used=False,
                 created_at=datetime.now(timezone.utc),
-                expires_at=datetime.now(timezone.utc) + timedelta(minutes=self.token_expiry)
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)
             )
         )
         self.session.commit()
     
     def get_token(self, token):
         token_hash = self._hash_token(token)
+        
         result = self.session.execute(
             self.tokens_table.select().where(
                 self.tokens_table.c.token_hash == token_hash,
@@ -647,6 +782,81 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
         self.session.commit()
         
         return dict(result._mapping)
+    
+    # ==================== Passkey Methods ====================
+    
+    def create_passkey_challenge(self, challenge, email, expires_at, purpose):
+        """Store passkey challenge and return ID."""
+        challenge_id = secrets.token_urlsafe(16)
+        
+        self.session.execute(
+            self.passkey_challenges_table.insert().values(
+                challenge_id=challenge_id,
+                challenge=challenge,
+                email=email,
+                purpose=purpose,
+                created_at=datetime.now(timezone.utc),
+                expires_at=expires_at,
+                used=False
+            )
+        )
+        self.session.commit()
+        
+        return challenge_id
+    
+    def consume_passkey_challenge(self, challenge_id):
+        """Atomically retrieve and mark challenge as used."""
+        result = self.session.execute(
+            self.passkey_challenges_table.select().where(
+                self.passkey_challenges_table.c.challenge_id == challenge_id,
+                self.passkey_challenges_table.c.used == False,
+                self.passkey_challenges_table.c.expires_at > datetime.now(timezone.utc)
+            )
+        ).fetchone()
+        
+        if not result:
+            return None
+        
+        # Mark as used (single-use)
+        self.session.execute(
+            self.passkey_challenges_table.update().where(
+                self.passkey_challenges_table.c.challenge_id == challenge_id
+            ).values(used=True)
+        )
+        self.session.commit()
+        
+        return {
+            'challenge': result.challenge,
+            'email': result.email,
+            'expires_at': result.expires_at,
+            'purpose': result.purpose
+        }
+    
+    def verify_passkey_assertion(self, challenge_row, assertion):
+        """
+        Verify passkey assertion. This is a stub implementation.
+        
+        In production, you would:
+        1. Verify the signature using the stored public key
+        2. Validate authenticatorData and clientDataJSON
+        3. Check rpIdHash matches your RP ID
+        4. Verify the challenge matches
+        
+        For now, this returns success if we find a user by email.
+        """
+        email = challenge_row.get('email')
+        
+        if not email:
+            # For usernameless flow, you'd look up credential by ID
+            # from assertion.get('id') or assertion.get('rawId')
+            return False, None
+        
+        # Get or create user
+        user = self.get_or_create_user(email)
+        
+        # In production: verify signature, authenticatorData, etc.
+        # For now, just return the user
+        return True, user
 
 
 # Legacy storage

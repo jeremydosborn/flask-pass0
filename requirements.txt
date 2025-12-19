@@ -1,8 +1,21 @@
--e .
+# Core framework
 Flask>=2.0.0
+Werkzeug>=2.0.0
+
+# Flask extensions
 Flask-Mail>=0.9.1
 Flask-SQLAlchemy>=2.5.0
 
+# Auth / security primitives
+pyotp>=2.9.0
+qrcode>=7.4
+webauthn>=2.0.0
+user-agents>=2.2.0
+
+# Cryptography & encoding (transitive but used directly)
+cryptography>=41.0.0
+
+# Dev / tooling (library ships with these today)
 black>=22.3.0
 pytest>=7.0.0
 flake8>=4.0.1

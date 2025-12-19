@@ -14,24 +14,25 @@ def generate_magic_link(email, next_url=None, storage=None):
     Returns:
         str: The generated magic link URL.
     """
-    # Get or create user using the storage adapter
+    # Lookup user
     if storage:
-        user = storage.get_or_create_user(email)
+        user = storage.get_user_by_email(email)
     else:
-        # Fallback to in-memory storage if no adapter provided.
-        # NOTE: this is intended for development/testing only.
-        user = get_or_create_user(email)
+        # Dev-only in-memory lookup (NO creation)
+        from .storage import _users
+        user = _users.get(email)
     
     # Generate cryptographically secure token (256-bit entropy)
     token = secrets.token_urlsafe(32)
     
-    # Store token with metadata
-    # NOTE: storage.store_token() handles hashing internally
+    # Store token metadata.
+    # Tokens are always stored and emailed to prevent account enumeration.
+    # user_id may be None for non-existent accounts; verification requires a bound user.
     token_data = {
-        'email': email,
-        'next_url': next_url,
+    'email': email,
+    'next_url': next_url,
     }
-    
+
     if storage:
         # Storage adapter handles expiry, hashing, and security
         storage.store_token(token, token_data)
@@ -111,79 +112,26 @@ def send_magic_link_email(email, link):
     mail.send(msg)
     return {"message": "Email sent successfully"}
 
-
 def verify_magic_link(token, storage=None):
-    """Verify a magic link token and return user if valid.
-    
-    Args:
-        token (str): The token to verify.
-        storage (StorageAdapter, optional): Storage adapter instance.
-    
-    Returns:
-        dict: Result with:
-            - success (bool)
-            - user (dict) if successful
-            - next_url (str, optional)
-            - error (str, optional)
-    """
     if storage:
-        # Storage adapter handles: hashing, expiry check, single-use enforcement
         token_data = storage.get_token(token)
         
+        # Generic error - don't reveal why it failed
         if not token_data:
-            # Token invalid, expired, or already used
             return {'success': False, 'error': 'Invalid or expired token'}
-            
+        
         email = token_data.get('email')
+        
+        # Lookup user by email from the verified token
+        user = storage.get_user_by_email(email)
+        
+        # Same generic error - don't reveal if user exists or not
+        if not user:
+            return {'success': False, 'error': 'Invalid or expired token'}
+        
+        # Success - token valid AND user exists
         next_url = token_data.get('next_url')
-        
-        # Get user
-        user = storage.get_or_create_user(email)
-        
-    else:
-        # Fallback to in-memory storage (dev only)
-        from .storage import _tokens
-        
-        if token not in _tokens:
-            return {'success': False, 'error': 'Invalid token'}
-            
-        token_data = _tokens[token]
-        email = token_data.get('email')
-        expiry = token_data.get('expiry')
-        next_url = token_data.get('next_url')
-        
-        # Check if token is expired (use UTC)
-        if datetime.now(timezone.utc) > expiry:
-            return {'success': False, 'error': 'Expired token'}
-        
-        # Remove token (one-time use)
-        del _tokens[token]
-        
-        # Get user
-        user = get_or_create_user(email)
-    
-    result = {'success': True, 'user': user}
-    if next_url:
-        result['next_url'] = next_url
-        
-    return result
-
-
-# Legacy function for backward compatibility
-def get_or_create_user(email):
-    """Legacy function for backward compatibility.
-    
-    Gets user by email or creates a new one using in-memory storage.
-    Intended for development/testing without a real storage adapter.
-    """
-    from .storage import _users
-    if email not in _users:
-        # In production, you might want to verify the email exists first
-        user_id = len(_users) + 1
-        _users[email] = {
-            'id': user_id,
-            'email': email,
-            'name': email.split('@')[0],  # Simple name from email
-            'created_at': datetime.now(timezone.utc).isoformat(),
-        }
-    return _users[email]
+        result = {'success': True, 'user': user}
+        if next_url:
+            result['next_url'] = next_url
+        return result

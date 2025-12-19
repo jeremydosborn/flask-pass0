@@ -54,64 +54,81 @@
             border-radius: 4px;
             font-size: 14px;
         }
+        .error {
+            margin-top: 16px;
+            padding: 12px;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 4px;
+            color: #c00;
+            font-size: 14px;
+        }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Login</h1>
-        
+
         <form id="form">
             <input type="email" id="email" placeholder="Enter your email" required autofocus>
-            <button type="submit" id="btn">Send Login Link</button>
+            <button type="submit" id="magic-btn">Send Login Link</button>
         </form>
-        
-        <div id="message" style="display:none;"></div>
+
+        <div id="message" class="hidden"></div>
     </div>
 
     <script>
+        function showMessage(text, type) {
+            const msg = document.getElementById('message');
+            msg.className = type;
+            msg.textContent = text;
+            msg.classList.remove('hidden');
+        }
+
+        function showInfo(html) {
+            const msg = document.getElementById('message');
+            msg.className = 'info';
+            msg.innerHTML = html;
+            msg.classList.remove('hidden');
+        }
+
         const form = document.getElementById('form');
-        const btn = document.getElementById('btn');
-        const msg = document.getElementById('message');
-        
+        const magicBtn = document.getElementById('magic-btn');
+
         form.onsubmit = async (e) => {
             e.preventDefault();
             const email = document.getElementById('email').value;
-            
-            btn.disabled = true;
-            btn.textContent = 'Sending...';
-            
+
+            magicBtn.disabled = true;
+            magicBtn.textContent = 'Sending...';
+            document.getElementById('message').classList.add('hidden');
+
             try {
                 const res = await fetch('/auth/request-magic-link', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email })
                 });
-                
+
                 const data = await res.json();
-                
+
                 if (data.success) {
                     if (data.link) {
-                        msg.className = 'info';
-                        msg.innerHTML = `Dev mode: <a href="${data.link}">Click here to login</a>`;
-                        msg.style.display = 'block';
+                        showInfo(`Dev mode: <a href="${data.link}">Click here to login</a>`);
                     } else {
-                        msg.className = 'info';
-                        msg.textContent = 'Check your email for the login link.';
-                        msg.style.display = 'block';
+                        showMessage('Check your email for the login link.', 'info');
                     }
                 } else {
-                    msg.className = 'error';
-                    msg.textContent = data.error || 'Something went wrong';
-                    msg.style.display = 'block';
+                    showMessage(data.error || 'Something went wrong', 'error');
                 }
             } catch (err) {
-                msg.className = 'error';
-                msg.textContent = 'Network error. Please try again.';
-                msg.style.display = 'block';
+                console.error('Magic link error:', err);
+                showMessage('Network error. Please try again.', 'error');
             }
-            
-            btn.disabled = false;
-            btn.textContent = 'Send Login Link';
+
+            magicBtn.disabled = false;
+            magicBtn.textContent = 'Send Login Link';
         };
     </script>
 </body>
