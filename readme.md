@@ -1,6 +1,6 @@
 # flask-pass0
 
-Passwordless authentication for Flask with magic links, passkeys, 2FA, and device binding. Alpha version. APIs may change and some features are not production-hardened.
+Passwordless authentication for Flask with magic links, passkeys, 2FA, and device binding. Alpha version. Not production-ready.
 
 ## Installation
 
