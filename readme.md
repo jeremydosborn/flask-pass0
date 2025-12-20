@@ -47,38 +47,18 @@ if __name__ == '__main__':
 
 ## Features
 
-* Passwordless authentication via magic links **or passkeys (WebAuthn)**
+* Passwordless authentication via magic links (Passkeys coming)
 * Two-factor authentication (TOTP)
 * Device fingerprinting + trusted device management
 * Built-in session handling (login, expiration, logout)
 * SQLAlchemy storage adapter
 * Safe redirect handling (same-site only)
 
-### Account Provisioning
-
-flask-pass0 **does not automatically create user accounts**.
-
-Magic link authentication requires that a user record already exists in your database. This is a deliberate security decision to avoid implicit account creation.
-
-You are responsible for provisioning users (e.g. via admin UI, invitation flow, or signup process) before authentication.
-
----
-
 ## Configuration
-
-### Primary Authentication Method
-
-Choose between magic links (default) or passkeys:
 
 ```python
 # Magic link (default)
 app.config['PASS0_PRIMARY_AUTH'] = 'magic_link'
-
-# OR use passkey as primary
-app.config['PASS0_PRIMARY_AUTH'] = 'passkey'
-app.config['PASS0_PASSKEY_ENABLED'] = True
-app.config['PASS0_PASSKEY_RP_ID'] = 'yourdomain.com'
-app.config['PASS0_PASSKEY_ORIGIN'] = 'https://yourdomain.com'
 ```
 
 ### Development Mode
@@ -101,17 +81,6 @@ app.config['MAIL_PASSWORD'] = 'your-password'
 app.config['MAIL_DEFAULT_SENDER'] = 'noreply@yourapp.com'
 ```
 
-### Passkey Configuration
-
-```python
-app.config['PASS0_PASSKEY_ENABLED'] = True
-app.config['PASS0_PASSKEY_RP_ID'] = 'yourdomain.com'  # Your domain
-app.config['PASS0_PASSKEY_ORIGIN'] = 'https://yourdomain.com'  # Your origin
-app.config['PASS0_PASSKEY_CHALLENGE_TTL'] = 120  # seconds
-app.config['PASS0_PASSKEY_TIMEOUT_MS'] = 60000  # milliseconds
-app.config['PASS0_PASSKEY_USER_VERIFICATION'] = 'preferred'  # required|preferred|discouraged
-```
-
 ### Two-Factor Authentication
 
 ```python
@@ -119,8 +88,6 @@ app.config['PASS0_2FA_ENABLED'] = True
 app.config['PASS0_2FA_REQUIRED'] = False
 app.config['PASS0_TOTP_ISSUER'] = 'YourApp'
 ```
-
-Note: Passkeys are inherently multi-factor (possession + biometric), so 2FA is typically not needed when using passkeys as the primary authentication method.
 
 ### Device Binding
 
@@ -153,12 +120,6 @@ app.config['PASS0_TOKEN_EXPIRY'] = 10                # minutes
 | `PASS0_REDIRECT_URL`              | `'/'`           | Default redirect after login                   |
 | `PASS0_LOGIN_URL`                 | `'/login'`      | Your app's login route                         |
 | `PASS0_SESSION_DURATION`          | `86400`         | Max session age (seconds)                      |
-| `PASS0_PASSKEY_ENABLED`           | `False`         | Enable passkey authentication                  |
-| `PASS0_PASSKEY_RP_ID`             | `SERVER_NAME`   | Relying Party ID (your domain)                 |
-| `PASS0_PASSKEY_ORIGIN`            | `None`          | Origin URL for WebAuthn                        |
-| `PASS0_PASSKEY_CHALLENGE_TTL`     | `120`           | Challenge time-to-live (seconds)               |
-| `PASS0_PASSKEY_TIMEOUT_MS`        | `60000`         | Browser timeout (milliseconds)                 |
-| `PASS0_PASSKEY_USER_VERIFICATION` | `'preferred'`   | User verification requirement                  |
 | `PASS0_2FA_ENABLED`               | `False`         | Enable 2FA                                     |
 | `PASS0_2FA_REQUIRED`              | `False`         | Require all users to enable 2FA                |
 | `PASS0_TOTP_ISSUER`               | `'Flask-Pass0'` | Issuer name in authenticator apps              |
@@ -175,8 +136,6 @@ app.config['PASS0_TOKEN_EXPIRY'] = 10                # minutes
 * `GET /auth/login` — Redirects to your app's login UI (`PASS0_LOGIN_URL`)
 * `POST /auth/request-magic-link` — Request magic link (JSON)
 * `GET /auth/verify/<token>` — Verify link → device check → 2FA → login
-* `POST /auth/passkey/begin-login` — Begin passkey authentication (JSON)
-* `POST /auth/passkey/finish-login` — Complete passkey authentication (JSON)
 * `GET /auth/logout` — Clears session
 
 ### 2FA Routes
@@ -217,42 +176,6 @@ You typically provide:
 * `auth.html` — sends email to `/auth/request-magic-link` or initiates passkey login
 * `2fa_verify.html` — calls `/auth/2fa/verify`
 * `dashboard.html`
-
-### Passkey Login Example
-
-```html
-<button id="passkey-login">Login with Passkey</button>
-
-<script>
-async function passkeyLogin() {
-    // Step 1: Begin
-    const begin = await fetch('/auth/passkey/begin-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    });
-    const { challenge_id, publicKey } = await begin.json();
-    
-    // Step 2: Get credential
-    publicKey.challenge = base64urlToArrayBuffer(publicKey.challenge);
-    const credential = await navigator.credentials.get({ publicKey });
-    
-    // Step 3: Finish
-    const assertion = credentialToJSON(credential);
-    const finish = await fetch('/auth/passkey/finish-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challenge_id, assertion })
-    });
-    const result = await finish.json();
-    
-    if (result.success) {
-        window.location.href = result.redirect;
-    }
-}
-</script>
-```
-
----
 
 ## Usage
 
@@ -313,7 +236,6 @@ def signout():
 
 * Token entropy: ~256 bits
 * Tokens: HMAC-SHA256 + single-use
-* Passkey challenges: 32-byte random, single-use, 120s TTL
 * 2FA secrets encrypted
 * Backup codes hashed
 * Device fingerprints hashed
@@ -327,12 +249,6 @@ app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 ```
-
-### Passkey Security Notes
-
-The current passkey implementation provides a **stub verification** function. For production use, you must implement proper WebAuthn verification in your storage adapter's `verify_passkey_assertion()` method.
-
----
 
 ## Security Logging (Test App)
 
@@ -350,7 +266,7 @@ This logging is **for development and demonstration purposes only** and is not p
 
 ## Examples
 
-See the `examples/` directory for working demos including magic links, passkeys, 2FA, device binding, and security logging.
+See the `examples/` directory for working test application including magic links, passkeys, 2FA, device binding, and security logging.
 
 ---
 
