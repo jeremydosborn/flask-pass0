@@ -1,10 +1,11 @@
 """
-Flask-Pass0 Storage Adapters with 2FA, Device Binding, and Passkey Support
+Flask-Pass0 Storage Adapters with 2FA, Device Binding
 """
 
 import hmac
 import hashlib
 import secrets
+import threading
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from cryptography.fernet import Fernet
@@ -83,45 +84,6 @@ class StorageAdapter(ABC):
     
     def verify_device_challenge(self, token):
         return None
-    
-    # Passkey methods (optional)
-    def create_passkey_challenge(self, challenge, email, expires_at, purpose):
-        """
-        Store a passkey challenge and return its ID.
-        
-        Args:
-            challenge: Base64url-encoded challenge string
-            email: Optional email for identifier-first flow
-            expires_at: Expiration datetime
-            purpose: 'login' or 'registration'
-        
-        Returns:
-            str: Challenge ID
-        """
-        raise NotImplementedError("Passkey not supported")
-    
-    def consume_passkey_challenge(self, challenge_id):
-        """
-        Atomically retrieve and mark challenge as used (single-use).
-        
-        Returns:
-            dict with keys: challenge, email, expires_at, purpose
-            or None if invalid/expired/already used
-        """
-        raise NotImplementedError("Passkey not supported")
-    
-    def verify_passkey_assertion(self, challenge_row, assertion):
-        """
-        Verify the WebAuthn assertion against the challenge.
-        
-        Args:
-            challenge_row: dict from consume_passkey_challenge
-            assertion: dict from client with authenticatorData, signature, etc.
-        
-        Returns:
-            tuple: (success: bool, user: dict|None)
-        """
-        raise NotImplementedError("Passkey verification not supported")
 
 
 class InMemoryStorageAdapter(StorageAdapter):
@@ -139,12 +101,11 @@ class InMemoryStorageAdapter(StorageAdapter):
         self.trusted_devices = {}
         self.device_challenges = {}
         
-        # Passkey storage
-        self.passkey_challenges = {}
-        self.passkey_credentials = {}  # user_id -> [credential_dicts]
-        
         self.encryption_key = encryption_key or Fernet.generate_key()
         self.cipher = Fernet(self.encryption_key)
+        
+        # Thread locks for atomic operations
+        self._lock = threading.Lock()
     
     def _hash_token(self, token):
         return hmac.new(
@@ -183,23 +144,26 @@ class InMemoryStorageAdapter(StorageAdapter):
         }
     
     def get_token(self, token):
+        """Atomically retrieve and mark token as used."""
         token_hash = self._hash_token(token)
-        token_data = self.tokens.get(token_hash)
         
-        if not token_data or token_data['used']:
-            return None
-        
-        if token_data['expires_at'] < datetime.now(timezone.utc):
-            del self.tokens[token_hash]
-            return None
-        
-        token_data['used'] = True
-        token_data['used_at'] = datetime.now(timezone.utc)
-        
-        return {
-            'email': token_data['email'],
-            'next_url': token_data.get('next_url')
-        }
+        with self._lock:  # Atomic operation
+            token_data = self.tokens.get(token_hash)
+            
+            if not token_data or token_data['used']:
+                return None
+            
+            if token_data['expires_at'] < datetime.now(timezone.utc):
+                del self.tokens[token_hash]
+                return None
+            
+            token_data['used'] = True
+            token_data['used_at'] = datetime.now(timezone.utc)
+            
+            return {
+                'email': token_data['email'],
+                'next_url': token_data.get('next_url')
+            }
     
     def delete_token(self, token):
         token_hash = self._hash_token(token)
@@ -224,14 +188,16 @@ class InMemoryStorageAdapter(StorageAdapter):
         self.backup_codes.pop(user_id, None)
     
     def validate_backup_code(self, user_id, code_hash):
-        if user_id not in self.backup_codes:
+        """Atomically validate and consume a backup code."""
+        with self._lock:  # Atomic operation
+            if user_id not in self.backup_codes:
+                return False
+            
+            codes = self.backup_codes[user_id]
+            if code_hash in codes:
+                codes.remove(code_hash)
+                return True
             return False
-        
-        codes = self.backup_codes[user_id]
-        if code_hash in codes:
-            codes.remove(code_hash)
-            return True
-        return False
     
     def regenerate_backup_codes(self, user_id, new_codes):
         self.backup_codes[user_id] = new_codes.copy()
@@ -245,19 +211,21 @@ class InMemoryStorageAdapter(StorageAdapter):
         }
     
     def verify_2fa_code(self, user_id, code_hash):
-        if user_id not in self.email_2fa_codes:
+        """Atomically verify and consume a 2FA code."""
+        with self._lock:  # Atomic operation
+            if user_id not in self.email_2fa_codes:
+                return False
+            
+            data = self.email_2fa_codes[user_id]
+            
+            if data['used'] or data['expires_at'] < datetime.now(timezone.utc):
+                return False
+            
+            if data['code_hash'] == code_hash:
+                data['used'] = True
+                return True
+            
             return False
-        
-        data = self.email_2fa_codes[user_id]
-        
-        if data['used'] or data['expires_at'] < datetime.now(timezone.utc):
-            return False
-        
-        if data['code_hash'] == code_hash:
-            data['used'] = True
-            return True
-        
-        return False
     
     def is_device_trusted(self, user_id, fingerprint_hash):
         if user_id not in self.trusted_devices:
@@ -303,82 +271,19 @@ class InMemoryStorageAdapter(StorageAdapter):
         self.device_challenges[token] = challenge_data
     
     def verify_device_challenge(self, token):
-        challenge = self.device_challenges.get(token)
-        
-        if not challenge or challenge.get('used'):
-            return None
-        
-        if challenge['expires_at'] < datetime.now(timezone.utc):
-            del self.device_challenges[token]
-            return None
-        
-        challenge['used'] = True
-        return challenge
-    
-    # ==================== Passkey Methods ====================
-    
-    def create_passkey_challenge(self, challenge, email, expires_at, purpose):
-        """Store passkey challenge and return ID."""
-        challenge_id = secrets.token_urlsafe(16)
-        
-        self.passkey_challenges[challenge_id] = {
-            'challenge': challenge,
-            'email': email,
-            'expires_at': expires_at,
-            'purpose': purpose,
-            'used': False,
-            'created_at': datetime.now(timezone.utc)
-        }
-        
-        return challenge_id
-    
-    def consume_passkey_challenge(self, challenge_id):
-        """Atomically retrieve and mark challenge as used."""
-        challenge_data = self.passkey_challenges.get(challenge_id)
-        
-        if not challenge_data or challenge_data.get('used'):
-            return None
-        
-        if challenge_data['expires_at'] < datetime.now(timezone.utc):
-            del self.passkey_challenges[challenge_id]
-            return None
-        
-        # Mark as used (single-use)
-        challenge_data['used'] = True
-        
-        return {
-            'challenge': challenge_data['challenge'],
-            'email': challenge_data.get('email'),
-            'expires_at': challenge_data['expires_at'],
-            'purpose': challenge_data['purpose']
-        }
-    
-    def verify_passkey_assertion(self, challenge_row, assertion):
-        """
-        Verify passkey assertion. This is a stub implementation.
-        
-        In production, you would:
-        1. Verify the signature using the stored public key
-        2. Validate authenticatorData and clientDataJSON
-        3. Check rpIdHash matches your RP ID
-        4. Verify the challenge matches
-        
-        For now, this returns success if we find a user by email.
-        """
-        email = challenge_row.get('email')
-        
-        if not email:
-            # For usernameless flow, you'd look up credential by ID
-            # from assertion.get('id') or assertion.get('rawId')
-            return False, None
-        
-        # Get or create user
-        user = self.get_or_create_user(email)
-        
-        # In production: verify signature, authenticatorData, etc.
-        # For now, just return the user
-        return True, user
-
+        """Atomically verify and consume a device challenge."""
+        with self._lock:  # Atomic operation
+            challenge = self.device_challenges.get(token)
+            
+            if not challenge or challenge.get('used'):
+                return None
+            
+            if challenge['expires_at'] < datetime.now(timezone.utc):
+                del self.device_challenges[token]
+                return None
+            
+            challenge['used'] = True
+            return challenge
 
 class SQLAlchemyStorageAdapter(StorageAdapter):
     """Production storage using SQLAlchemy with encryption."""
@@ -454,30 +359,6 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
             Column('used', Boolean, default=False)
         )
         
-        # Passkey challenges table
-        self.passkey_challenges_table = Table('pass0_passkey_challenges', metadata,
-            Column('id', Integer, primary_key=True),
-            Column('challenge_id', String(64), unique=True, nullable=False),
-            Column('challenge', String(64), nullable=False),
-            Column('email', String(255)),
-            Column('purpose', String(32), nullable=False),
-            Column('created_at', DateTime(timezone=True), nullable=False),
-            Column('expires_at', DateTime(timezone=True), nullable=False),
-            Column('used', Boolean, default=False)
-        )
-        
-        # Passkey credentials table (for storing registered passkeys)
-        self.passkey_credentials_table = Table('pass0_passkey_credentials', metadata,
-            Column('id', Integer, primary_key=True),
-            Column('user_id', Integer, nullable=False),
-            Column('credential_id', String(255), unique=True, nullable=False),
-            Column('public_key', Text, nullable=False),
-            Column('sign_count', Integer, default=0),
-            Column('transports', String(255)),
-            Column('created_at', DateTime(timezone=True), nullable=False),
-            Column('last_used', DateTime(timezone=True))
-        )
-        
         # Generate proper Fernet key (always use generated key for security)
         self.encryption_key = Fernet.generate_key()
         self.cipher = Fernet(self.encryption_key)
@@ -539,25 +420,28 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
         self.session.commit()
     
     def get_token(self, token):
+        """Atomically retrieve and mark token as used via UPDATE...RETURNING."""
         token_hash = self._hash_token(token)
         
+        # Single atomic UPDATE that checks conditions and marks as used
         result = self.session.execute(
-            self.tokens_table.select().where(
+            self.tokens_table.update().where(
                 self.tokens_table.c.token_hash == token_hash,
                 self.tokens_table.c.used == False,
                 self.tokens_table.c.expires_at > datetime.now(timezone.utc)
+            ).values(
+                used=True, 
+                used_at=datetime.now(timezone.utc)
+            ).returning(
+                self.tokens_table.c.email,
+                self.tokens_table.c.next_url
             )
         ).fetchone()
         
+        self.session.commit()
+        
         if not result:
             return None
-        
-        self.session.execute(
-            self.tokens_table.update().where(
-                self.tokens_table.c.token_hash == token_hash
-            ).values(used=True, used_at=datetime.now(timezone.utc))
-        )
-        self.session.commit()
         
         return {'email': result.email, 'next_url': result.next_url}
     
@@ -625,24 +509,22 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
         self.session.commit()
     
     def validate_backup_code(self, user_id, code_hash):
+        """Atomically validate and consume a backup code via UPDATE...RETURNING."""
+        # Single atomic UPDATE that checks conditions and marks as used
         result = self.session.execute(
-            self.backup_codes_table.select().where(
+            self.backup_codes_table.update().where(
                 self.backup_codes_table.c.user_id == user_id,
                 self.backup_codes_table.c.code_hash == code_hash,
                 self.backup_codes_table.c.used == False
+            ).values(
+                used=True
+            ).returning(
+                self.backup_codes_table.c.id
             )
         ).fetchone()
         
-        if not result:
-            return False
-        
-        self.session.execute(
-            self.backup_codes_table.update().where(
-                self.backup_codes_table.c.id == result.id
-            ).values(used=True)
-        )
         self.session.commit()
-        return True
+        return result is not None
     
     def regenerate_backup_codes(self, user_id, new_codes):
         self.session.execute(
@@ -676,25 +558,23 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
         self.session.commit()
     
     def verify_2fa_code(self, user_id, code_hash):
+        """Atomically verify and consume a 2FA code via UPDATE...RETURNING."""
+        # Single atomic UPDATE that checks conditions and marks as used
         result = self.session.execute(
-            self.email_2fa_codes_table.select().where(
+            self.email_2fa_codes_table.update().where(
                 self.email_2fa_codes_table.c.user_id == user_id,
                 self.email_2fa_codes_table.c.code_hash == code_hash,
                 self.email_2fa_codes_table.c.used == False,
                 self.email_2fa_codes_table.c.expires_at > datetime.now(timezone.utc)
+            ).values(
+                used=True
+            ).returning(
+                self.email_2fa_codes_table.c.id
             )
         ).fetchone()
         
-        if not result:
-            return False
-        
-        self.session.execute(
-            self.email_2fa_codes_table.update().where(
-                self.email_2fa_codes_table.c.id == result.id
-            ).values(used=True)
-        )
         self.session.commit()
-        return True
+        return result is not None
     
     def is_device_trusted(self, user_id, fingerprint_hash):
         result = self.session.execute(
@@ -763,101 +643,29 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
         self.session.commit()
     
     def verify_device_challenge(self, token):
+        """Atomically verify and consume a device challenge via UPDATE...RETURNING."""
+        # Single atomic UPDATE that checks conditions and marks as used
         result = self.session.execute(
-            self.device_challenges_table.select().where(
+            self.device_challenges_table.update().where(
                 self.device_challenges_table.c.token == token,
                 self.device_challenges_table.c.used == False,
                 self.device_challenges_table.c.expires_at > datetime.now(timezone.utc)
+            ).values(
+                used=True
+            ).returning(
+                self.device_challenges_table.c.user_id,
+                self.device_challenges_table.c.fingerprint_hash,
+                self.device_challenges_table.c.created_at,
+                self.device_challenges_table.c.expires_at
             )
         ).fetchone()
         
+        self.session.commit()
+        
         if not result:
             return None
-        
-        self.session.execute(
-            self.device_challenges_table.update().where(
-                self.device_challenges_table.c.token == token
-            ).values(used=True)
-        )
-        self.session.commit()
         
         return dict(result._mapping)
-    
-    # ==================== Passkey Methods ====================
-    
-    def create_passkey_challenge(self, challenge, email, expires_at, purpose):
-        """Store passkey challenge and return ID."""
-        challenge_id = secrets.token_urlsafe(16)
-        
-        self.session.execute(
-            self.passkey_challenges_table.insert().values(
-                challenge_id=challenge_id,
-                challenge=challenge,
-                email=email,
-                purpose=purpose,
-                created_at=datetime.now(timezone.utc),
-                expires_at=expires_at,
-                used=False
-            )
-        )
-        self.session.commit()
-        
-        return challenge_id
-    
-    def consume_passkey_challenge(self, challenge_id):
-        """Atomically retrieve and mark challenge as used."""
-        result = self.session.execute(
-            self.passkey_challenges_table.select().where(
-                self.passkey_challenges_table.c.challenge_id == challenge_id,
-                self.passkey_challenges_table.c.used == False,
-                self.passkey_challenges_table.c.expires_at > datetime.now(timezone.utc)
-            )
-        ).fetchone()
-        
-        if not result:
-            return None
-        
-        # Mark as used (single-use)
-        self.session.execute(
-            self.passkey_challenges_table.update().where(
-                self.passkey_challenges_table.c.challenge_id == challenge_id
-            ).values(used=True)
-        )
-        self.session.commit()
-        
-        return {
-            'challenge': result.challenge,
-            'email': result.email,
-            'expires_at': result.expires_at,
-            'purpose': result.purpose
-        }
-    
-    def verify_passkey_assertion(self, challenge_row, assertion):
-        """
-        Verify passkey assertion. This is a stub implementation.
-        
-        In production, you would:
-        1. Verify the signature using the stored public key
-        2. Validate authenticatorData and clientDataJSON
-        3. Check rpIdHash matches your RP ID
-        4. Verify the challenge matches
-        
-        For now, this returns success if we find a user by email.
-        """
-        email = challenge_row.get('email')
-        
-        if not email:
-            # For usernameless flow, you'd look up credential by ID
-            # from assertion.get('id') or assertion.get('rawId')
-            return False, None
-        
-        # Get or create user
-        user = self.get_or_create_user(email)
-        
-        # In production: verify signature, authenticatorData, etc.
-        # For now, just return the user
-        return True, user
-
 
 # Legacy storage
 _users = {}
