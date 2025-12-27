@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, render_template, jsonify, session, request, redirect
 from flask_sqlalchemy import SQLAlchemy
 
@@ -62,7 +62,7 @@ def log_event(event_type, message, **data):
             sanitized[k] = v
     
     event = {
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'type': event_type,
         'message': message,
         'data': sanitized

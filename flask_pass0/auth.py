@@ -1,15 +1,14 @@
 from flask import Blueprint, session, redirect, url_for, request, current_app, jsonify
-import time
+from datetime import datetime, timedelta, timezone
 from .magic_link import generate_magic_link, verify_magic_link
 from .storage import InMemoryStorageAdapter
 from .two_factor import TwoFactorAuth
 from .device_binding import DeviceBinding
-from .passkey import PasskeyAuth
 from functools import wraps
 from urllib.parse import urlparse
 
 class Pass0:
-    """Passwordless authentication for Flask with optional 2FA, device binding, and passkey support."""
+    """Passwordless authentication for Flask with optional 2FA, device binding."""
     
     def __init__(self, app=None, storage_adapter=None, user_model=None):
         self.app = app
@@ -20,7 +19,6 @@ class Pass0:
         
         self.two_factor = None
         self.device_binding = None
-        self.passkey = None
         
         self.auth_methods = {
             'magic_link': {
@@ -28,11 +26,6 @@ class Pass0:
                 'name': 'Magic Link',
                 'description': 'Receive a secure login link via email'
             },
-            'passkey': {
-                'enabled': False,
-                'name': 'Passkey',
-                'description': 'Use your device biometrics or security key'
-            }
         }
         
         if app is not None:
@@ -50,7 +43,7 @@ class Pass0:
         app.config.setdefault('PASS0_DEV_MODE', False)
         app.config.setdefault('PASS0_SESSION_DURATION', 24 * 60 * 60)
         
-        # Primary auth method: 'magic_link' (default) or 'passkey'
+        # Primary auth method
         app.config.setdefault('PASS0_PRIMARY_AUTH', 'magic_link')
         
         # 2FA configuration
@@ -64,14 +57,6 @@ class Pass0:
         app.config.setdefault('PASS0_DEVICE_CHALLENGE_EXPIRY', 900)
         app.config.setdefault('PASS0_SKIP_DEVICE_IF_2FA', True)  # Optimization
         
-        # Passkey configuration
-        app.config.setdefault('PASS0_PASSKEY_ENABLED', False)
-        app.config.setdefault('PASS0_PASSKEY_RP_ID', app.config.get('SERVER_NAME', 'localhost'))
-        app.config.setdefault('PASS0_PASSKEY_ORIGIN', None)
-        app.config.setdefault('PASS0_PASSKEY_CHALLENGE_TTL', 120)
-        app.config.setdefault('PASS0_PASSKEY_TIMEOUT_MS', 60000)
-        app.config.setdefault('PASS0_PASSKEY_USER_VERIFICATION', 'preferred')
-        
         app.extensions['pass0'] = self
         
         if hasattr(self.storage, 'init_app'):
@@ -82,22 +67,6 @@ class Pass0:
         
         if app.config.get('PASS0_DEVICE_BINDING_ENABLED'):
             self.device_binding = DeviceBinding(self.storage)
-        
-        # Initialize passkey if enabled
-        if app.config.get('PASS0_PASSKEY_ENABLED'):
-            self.passkey = PasskeyAuth(
-                storage=self.storage,
-                rp_id=app.config.get('PASS0_PASSKEY_RP_ID'),
-                origin=app.config.get('PASS0_PASSKEY_ORIGIN'),
-                challenge_ttl_seconds=app.config.get('PASS0_PASSKEY_CHALLENGE_TTL'),
-                timeout_ms=app.config.get('PASS0_PASSKEY_TIMEOUT_MS'),
-                user_verification=app.config.get('PASS0_PASSKEY_USER_VERIFICATION'),
-            )
-            self.auth_methods['passkey']['enabled'] = True
-            
-            # If passkey is the primary auth method, update magic_link accordingly
-            if app.config.get('PASS0_PRIMARY_AUTH') == 'passkey':
-                self.auth_methods['magic_link']['enabled'] = False
         
         # Register routes after all initialization is complete
         self._register_routes()
@@ -128,9 +97,18 @@ class Pass0:
         if session.get('2fa_pending'):
             return False
             
-        logged_in_at = session.get('logged_in_at', 0)
+        logged_in_at = session.get('logged_in_at')
+        if not logged_in_at:
+            return False
+        
+        try:
+            logged_in_dt = datetime.fromisoformat(logged_in_at)
+        except (ValueError, TypeError):
+            session.clear()
+            return False
+        
         session_duration = current_app.config.get('PASS0_SESSION_DURATION', 24 * 60 * 60)
-        if int(time.time()) - logged_in_at > session_duration:
+        if datetime.now(timezone.utc) - logged_in_dt > timedelta(seconds=session_duration):
             session.clear()
             return False
             
@@ -291,7 +269,7 @@ class Pass0:
                 return redirect(url_for(check_result['redirect']))
             
             # Fully authenticated
-            session['logged_in_at'] = int(time.time())
+            session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
             session.pop('2fa_pending', None)
             
             # Add device to trusted list if device binding enabled and not skipped
@@ -310,94 +288,6 @@ class Pass0:
             raw_next = result.get('next_url') or session.pop('next', None)
             next_url = self._resolve_next_url(raw_next)
             return redirect(next_url)
-        
-        # ==================== Passkey Routes ====================
-        
-        @self.blueprint.route('/passkey/begin-login', methods=['POST'])
-        def passkey_begin_login():
-            """Begin passkey authentication flow."""
-            if not self.passkey:
-                return jsonify({'error': 'Passkey authentication is not enabled'}), 400
-            
-            if not self.auth_methods.get('passkey', {}).get('enabled', False):
-                return jsonify({'error': 'Passkey authentication is not enabled'}), 400
-            
-            data = request.get_json() or {}
-            email = data.get('email')  # Optional for identifier-first flow
-            
-            try:
-                result = self.passkey.begin_login(email=email)
-                return jsonify(result)
-            except Exception as e:
-                current_app.logger.error(f"Error beginning passkey login: {str(e)}")
-                return jsonify({'error': str(e)}), 500
-        
-        @self.blueprint.route('/passkey/finish-login', methods=['POST'])
-        def passkey_finish_login():
-            """Complete passkey authentication flow."""
-            if not self.passkey:
-                return jsonify({'error': 'Passkey authentication is not enabled'}), 400
-            
-            data = request.get_json()
-            if not data:
-                return jsonify({'error': 'Invalid request'}), 400
-            
-            challenge_id = data.get('challenge_id')
-            assertion = data.get('assertion')
-            
-            try:
-                ok, user, error = self.passkey.finish_login(challenge_id, assertion)
-                
-                if not ok:
-                    return jsonify({'success': False, 'error': error}), 400
-                
-                # User authenticated via passkey
-                user_id = user.get('id')
-                session['user_id'] = user_id
-                
-                # Check device binding and 2FA (passkeys skip 2FA by design in this implementation)
-                # Note: Passkeys are inherently secure, so we skip additional challenges
-                check_result = self._check_device_and_2fa(user)
-                
-                if not check_result['allow']:
-                    return jsonify({
-                        'success': False,
-                        'redirect': url_for(check_result['redirect']),
-                        'reason': check_result['reason']
-                    })
-                
-                # Fully authenticated
-                session['logged_in_at'] = int(time.time())
-                session.pop('2fa_pending', None)
-                
-                # Add device to trusted list if device binding enabled
-                if self.device_binding and current_app.config.get('PASS0_DEVICE_BINDING_ENABLED'):
-                    has_2fa = self.two_factor and self.two_factor.is_2fa_enabled(user_id)
-                    skip_device = has_2fa and current_app.config.get('PASS0_SKIP_DEVICE_IF_2FA', True)
-                    
-                    if not skip_device:
-                        fingerprint = self.device_binding.get_device_fingerprint()
-                        fingerprint_hash = self.device_binding.hash_fingerprint(fingerprint)
-                        
-                        if not self.device_binding.is_device_trusted(user_id, fingerprint_hash):
-                            self.device_binding.add_trusted_device(user_id, fingerprint, fingerprint_hash)
-                
-                # Safe redirect resolution
-                raw_next = session.pop('next', None)
-                next_url = self._resolve_next_url(raw_next)
-                
-                return jsonify({
-                    'success': True,
-                    'redirect': next_url,
-                    'user': {
-                        'id': user.get('id'),
-                        'email': user.get('email')
-                    }
-                })
-                
-            except Exception as e:
-                current_app.logger.error(f"Error finishing passkey login: {str(e)}")
-                return jsonify({'error': str(e)}), 500
         
         # ==================== 2FA Routes ====================
         
@@ -443,7 +333,7 @@ class Pass0:
             session.pop('2fa_pending', None)
             
             if not session.get('logged_in_at'):
-                session['logged_in_at'] = int(time.time())
+                session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
             
             return jsonify({
                 'success': True,
@@ -489,7 +379,7 @@ class Pass0:
             
             session.pop('2fa_pending', None)
             session.pop('2fa_user_id', None)
-            session['logged_in_at'] = int(time.time())
+            session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
             
             return jsonify({'success': True, 'message': '2FA verification successful'})
         
@@ -551,7 +441,6 @@ class Pass0:
                 'is_trusted': True
             }
             
-            from datetime import datetime, timezone
             self.storage.add_trusted_device(device_data)
             
             return jsonify({
