@@ -10,7 +10,7 @@ Alpha version
 - **Two-Factor Authentication (2FA)** - TOTP support with QR code generation
 - **Device Binding** - Trust and manage user devices
 - **Flexible Storage** - Works with in-memory dict, SQLAlchemy, or custom backends
-- **Session Management** - Secure session handling with timezone-aware timestamps
+- **Session Management** - Secure session handling
 
 ## Quick Start
 
