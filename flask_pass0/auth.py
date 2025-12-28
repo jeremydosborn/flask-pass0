@@ -13,23 +13,6 @@ class Pass0:
     def __init__(self, app=None, storage_adapter=None, user_model=None):
         self.app = app
         self.blueprint = Blueprint('pass0', __name__, template_folder='templates')
-        
-        # Production safety check
-        if storage_adapter is None and app and not app.debug:
-            raise RuntimeError(
-                "\n" + "="*70 + "\n"
-                "FATAL: InMemoryStorageAdapter cannot be used in production!\n"
-                "\n"
-                "Default in-memory storage loses all data on restart and\n"
-                "cannot scale across multiple processes.\n"
-                "\n"
-                "You must provide a persistent storage adapter:\n"
-                "  from flask_pass0.storage import SQLAlchemyStorageAdapter\n"
-                "  auth = Pass0(app, storage_adapter=SQLAlchemyStorageAdapter(db))\n"
-                "\n"
-                "Set app.debug=True to use in-memory storage in development.\n"
-                + "="*70
-            )
 
         self.storage = storage_adapter or InMemoryStorageAdapter()
         self.user_model = user_model

@@ -4,9 +4,7 @@ Lightweight passwordless authentication for Flask with magic links, two-factor a
 
 Alpha version
 
-## Production Requirements
-
-**WARNING: Default storage is for development only.**
+**WARNING: InMemoryStorageAdapter is for development only.** It loses all data on restart and cannot scale across multiple processes. Use SQLAlchemyStorageAdapter or implement a custom adapter for non-dev environments.
 
 ## Features
 
