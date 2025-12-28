@@ -4,6 +4,10 @@ Lightweight passwordless authentication for Flask with magic links, two-factor a
 
 Alpha version
 
+## Production Requirements
+
+**WARNING: Default storage is for development only.**
+
 ## Features
 
 - **Magic Link Authentication** - Email-based passwordless login
