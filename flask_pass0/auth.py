@@ -74,6 +74,33 @@ class Pass0:
         # Register blueprint after routes are added
         app.register_blueprint(self.blueprint, url_prefix='/auth')
     
+    def _regenerate_session(self):
+        """Regenerate session ID to prevent session fixation attacks."""
+        # Save current session data
+        session_data = dict(session)
+        
+        # Clear old session
+        session.clear()
+        
+        # Create new session with same data
+        for key, value in session_data.items():
+            session[key] = value
+        
+        # Force session to be saved
+        session.modified = True
+
+    def _cleanup_temp_session_keys(self):
+        """Remove temporary authentication session keys after full login."""
+        temp_keys = [
+            '2fa_pending',
+            '2fa_user_id',
+            'device_challenge_pending',
+            'device_challenge_user_id',
+        ]
+        
+        for key in temp_keys:
+            session.pop(key, None)
+
     def register_auth_method(self, method_id, config):
         """Register a new authentication method."""
         self.auth_methods[method_id] = config
@@ -262,6 +289,7 @@ class Pass0:
             user_id = user.get('id')
             
             session['user_id'] = user_id
+            self._regenerate_session() 
             
             check_result = self._check_device_and_2fa(user)
             
@@ -271,6 +299,7 @@ class Pass0:
             # Fully authenticated
             session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
             session.pop('2fa_pending', None)
+            self._cleanup_temp_session_keys() 
             
             # Add device to trusted list if device binding enabled and not skipped
             if self.device_binding and current_app.config.get('PASS0_DEVICE_BINDING_ENABLED'):
@@ -297,10 +326,10 @@ class Pass0:
             if not self.two_factor:
                 return jsonify({'error': '2FA not enabled'}), 400
             
-            if not self.is_authenticated() and not session.get('2fa_user_id'):
+            if not self.is_authenticated():
                 return redirect(url_for('pass0.login'))
             
-            user_id = session.get('user_id') or session.get('2fa_user_id')
+            user_id = session.get('user_id')
             
             if request.method == 'GET':
                 secret = self.two_factor.generate_totp_secret()
@@ -355,8 +384,7 @@ class Pass0:
             if request.method == 'GET':
                 # No template rendering in the package; host app provides UI.
                 return jsonify({
-                    'two_factor_required': True,
-                    'user_id': user_id
+                    'two_factor_required': True
                 })
             
             data = request.get_json()
