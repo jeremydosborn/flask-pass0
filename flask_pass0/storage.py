@@ -154,7 +154,7 @@ class InMemoryStorageAdapter(StorageAdapter):
             if not token_data or token_data['used']:
                 return None
             
-            if token_data['expires_at'] < datetime.now(timezone.utc):
+            if token_data['expires_at'] <= datetime.now(timezone.utc):
                 del self.tokens[token_hash]
                 return None
             
@@ -219,7 +219,7 @@ class InMemoryStorageAdapter(StorageAdapter):
             
             data = self.email_2fa_codes[user_id]
             
-            if data['used'] or data['expires_at'] < datetime.now(timezone.utc):
+            if data['used'] or data['expires_at'] <= datetime.now(timezone.utc):
                 return False
             
             if secrets.compare_digest(data['code_hash'], code_hash):
@@ -233,7 +233,7 @@ class InMemoryStorageAdapter(StorageAdapter):
             return False
         
         for device in self.trusted_devices[user_id]:
-            if device['fingerprint_hash'] == fingerprint_hash and device['is_trusted']:
+            if secrets.compare_digest(device['fingerprint_hash'], fingerprint_hash) and device['is_trusted']:
                 return True
         return False
     
@@ -254,7 +254,7 @@ class InMemoryStorageAdapter(StorageAdapter):
             return
         
         for device in self.trusted_devices[user_id]:
-            if device['fingerprint_hash'] == fingerprint_hash:
+            if secrets.compare_digest(device['fingerprint_hash'], fingerprint_hash):
                 device['last_seen'] = datetime.now(timezone.utc)
                 break
     
@@ -279,7 +279,7 @@ class InMemoryStorageAdapter(StorageAdapter):
             if not challenge or challenge.get('used'):
                 return None
             
-            if challenge['expires_at'] < datetime.now(timezone.utc):
+            if challenge['expires_at'] <= datetime.now(timezone.utc):
                 del self.device_challenges[token]
                 return None
             
@@ -429,7 +429,7 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
             self.tokens_table.update().where(
                 self.tokens_table.c.token_hash == token_hash,
                 self.tokens_table.c.used == False,
-                self.tokens_table.c.expires_at > datetime.now(timezone.utc)
+                self.tokens_table.c.expires_at >= datetime.now(timezone.utc)
             ).values(
                 used=True, 
                 used_at=datetime.now(timezone.utc)
@@ -566,7 +566,7 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
                 self.email_2fa_codes_table.c.user_id == user_id,
                 self.email_2fa_codes_table.c.code_hash == code_hash,
                 self.email_2fa_codes_table.c.used == False,
-                self.email_2fa_codes_table.c.expires_at > datetime.now(timezone.utc)
+                self.email_2fa_codes_table.c.expires_at >= datetime.now(timezone.utc)
             ).values(
                 used=True
             ).returning(
@@ -650,7 +650,7 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
             self.device_challenges_table.update().where(
                 self.device_challenges_table.c.token == token,
                 self.device_challenges_table.c.used == False,
-                self.device_challenges_table.c.expires_at > datetime.now(timezone.utc)
+                self.device_challenges_table.c.expires_at >= datetime.now(timezone.utc)
             ).values(
                 used=True
             ).returning(
