@@ -181,12 +181,14 @@ class InMemoryStorageAdapter(StorageAdapter):
     
     def enable_2fa(self, user_id, secret, backup_codes):
         encrypted_secret = self.cipher.encrypt(secret.encode())
-        self.totp_secrets[user_id] = encrypted_secret
-        self.backup_codes[user_id] = backup_codes.copy()
+        with self._lock:
+            self.totp_secrets[user_id] = encrypted_secret
+            self.backup_codes[user_id] = backup_codes.copy()
     
     def disable_2fa(self, user_id):
-        self.totp_secrets.pop(user_id, None)
-        self.backup_codes.pop(user_id, None)
+        with self._lock:
+            self.totp_secrets.pop(user_id, None)
+            self.backup_codes.pop(user_id, None)
     
     def validate_backup_code(self, user_id, code_hash):
         """Atomically validate and consume a backup code."""
@@ -201,15 +203,17 @@ class InMemoryStorageAdapter(StorageAdapter):
             return False
     
     def regenerate_backup_codes(self, user_id, new_codes):
-        self.backup_codes[user_id] = new_codes.copy()
+        with self._lock:
+            self.backup_codes[user_id] = new_codes.copy()
     
     def store_2fa_code(self, code_data):
         user_id = code_data['user_id']
-        self.email_2fa_codes[user_id] = {
-            'code_hash': code_data['code_hash'],
-            'expires_at': code_data['expires_at'],
-            'used': False
-        }
+        with self._lock:
+            self.email_2fa_codes[user_id] = {
+                'code_hash': code_data['code_hash'],
+                'expires_at': code_data['expires_at'],
+                'used': False
+            }
     
     def verify_2fa_code(self, user_id, code_hash):
         """Atomically verify and consume a 2FA code."""
@@ -240,11 +244,12 @@ class InMemoryStorageAdapter(StorageAdapter):
     def add_trusted_device(self, device_data):
         user_id = device_data['user_id']
         
-        if user_id not in self.trusted_devices:
-            self.trusted_devices[user_id] = []
-        
-        device_data['id'] = len(self.trusted_devices[user_id]) + 1
-        self.trusted_devices[user_id].append(device_data)
+        with self._lock:
+            if user_id not in self.trusted_devices:
+                self.trusted_devices[user_id] = []
+            
+            device_data['id'] = len(self.trusted_devices[user_id]) + 1
+            self.trusted_devices[user_id].append(device_data)
     
     def get_trusted_devices(self, user_id):
         return self.trusted_devices.get(user_id, [])
@@ -259,17 +264,19 @@ class InMemoryStorageAdapter(StorageAdapter):
                 break
     
     def revoke_device(self, user_id, device_id):
-        if user_id not in self.trusted_devices:
-            return
-        
-        self.trusted_devices[user_id] = [
-            d for d in self.trusted_devices[user_id] 
-            if d.get('id') != device_id
-        ]
+        with self._lock:
+            if user_id not in self.trusted_devices:
+                return
+            
+            self.trusted_devices[user_id] = [
+                d for d in self.trusted_devices[user_id] 
+                if d.get('id') != device_id
+            ]
     
     def store_device_challenge(self, challenge_data):
         token = challenge_data['token']
-        self.device_challenges[token] = challenge_data
+        with self._lock:
+            self.device_challenges[token] = challenge_data
     
     def verify_device_challenge(self, token):
         """Atomically verify and consume a device challenge."""
