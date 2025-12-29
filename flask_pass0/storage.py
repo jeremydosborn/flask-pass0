@@ -4,11 +4,12 @@ Flask-Pass0 Storage Adapters with 2FA, Device Binding
 
 import hmac
 import hashlib
-import secrets
 import threading
+import secrets
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from cryptography.fernet import Fernet
+
 
 
 class StorageAdapter(ABC):
@@ -221,7 +222,7 @@ class InMemoryStorageAdapter(StorageAdapter):
             if data['used'] or data['expires_at'] < datetime.now(timezone.utc):
                 return False
             
-            if data['code_hash'] == code_hash:
+            if secrets.compare_digest(data['code_hash'], code_hash):
                 data['used'] = True
                 return True
             
