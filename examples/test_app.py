@@ -23,11 +23,10 @@ app.config['PASS0_DEV_MODE'] = True
 app.config['PASS0_2FA_ENABLED'] = True
 app.config['PASS0_2FA_REQUIRED'] = False
 app.config['PASS0_TOTP_ISSUER'] = 'Flask-Pass0 Demo'
-app.config['PASS0_DEVICE_BINDING_ENABLED'] = False
-app.config['PASS0_SKIP_DEVICE_IF_2FA'] = True
 app.config['PASS0_LOGIN_REDIRECT'] = '/'
 app.config['PASS0_MAGIC_LINK_ENABLED'] = True
 app.config['PASS0_PRIMARY_AUTH'] = 'magic_link'
+app.config['PASS0_2FA_VERIFY_ROUTE'] = 'verify_2fa_page'
 
 db = SQLAlchemy(app)
 
@@ -187,27 +186,27 @@ def log_auth_events(response):
                 email = data.get('email')
                 log_event('step_1_email_entered', 'User entered email address', 
                          email=email, ip_address=request.remote_addr)
-                log_event('step_2_token_gen', 'Cryptographic token generated (256-bit)', email=email)
-                log_event('step_3_token_hashed', 'Token hashed with SHA-256', email=email)
-                log_event('step_4_token_stored', 'Token hash stored in database', email=email)
+                log_event('step_2_token_gen', 'Cryptographic token generated (256-bit)', 
+                         email=email)
+                log_event('step_3_token_hashed', 'Token hashed with SHA-256', 
+                         email=email)
+                log_event('step_4_token_stored', 'Token hash stored in database', 
+                         email=email)
                 
+                # SECURE: Don't log the actual link or token
                 if app.config.get('PASS0_DEV_MODE'):
-                    response_data = response.get_json()
-                    if response_data and 'link' in response_data:
-                        token = response_data['link'].split('/')[-1]
-                        log_event('step_5_link_generated', 'Magic link URL generated (DEV MODE)',
-                                email=email, token_preview=token[:12] + '...',
-                                full_link=response_data['link'])
+                    log_event('step_5_link_generated', 'Magic link generated and logged to console (DEV MODE)',
+                             email=email, note='Check server console for link')
                 else:
-                    log_event('step_5_email_sent', 'Magic link sent via email', email=email)
+                    log_event('step_5_email_sent', 'Magic link sent via email', 
+                             email=email)
         except Exception as e:
             print(f"Error logging magic link request: {e}")
     
     # Magic link verification
     if request.endpoint == 'pass0.verify':
-        token = request.view_args.get('token', '')
+        # SECURE: Don't log token, just that verification was attempted
         log_event('step_6_link_clicked', 'User clicked magic link',
-                 token_preview=token[:12] + '...' if len(token) > 12 else token,
                  ip_address=request.remote_addr)
         
         if response.status_code == 302:
@@ -221,26 +220,6 @@ def log_auth_events(response):
                              user_id=user['id'], email=user['email'])
                     log_event('step_9_session_created', 'Secure session established',
                              user_id=user['id'])
-                    
-                    # Check if device was recognized
-                    if hasattr(pass0, 'device_binding') and pass0.device_binding:
-                        try:
-                            fingerprint = pass0.device_binding.get_device_fingerprint()
-                            fp_hash = pass0.device_binding.hash_fingerprint(fingerprint)
-                            is_trusted = pass0.device_binding.is_device_trusted(user['id'], fp_hash)
-                            
-                            if is_trusted:
-                                log_event('step_10_device_recognized', 
-                                        'Trusted device detected - skipping additional verification',
-                                        user_id=user['id'])
-                            else:
-                                log_event('step_10_device_new', 
-                                        'New device - adding to trusted list',
-                                        user_id=user['id'],
-                                        device_name=pass0.device_binding.get_device_name(fingerprint))
-                        except Exception as e:
-                            print(f"Error checking device: {e}")
-                    
                     log_event('login_success', '✓ LOGIN SUCCESSFUL - User authenticated via magic link',
                              user_id=user['id'], email=user['email'],
                              ip_address=request.remote_addr)
@@ -255,16 +234,11 @@ def log_auth_events(response):
         if user and response.status_code == 200:
             log_event('2fa_setup_start', '2FA setup initiated by user',
                      user_id=user['id'])
-            try:
-                response_data = response.get_json()
-                if response_data and 'secret' in response_data:
-                    log_event('2fa_secret_generated', 'TOTP secret generated (base32)',
-                             user_id=user['id'],
-                             secret_preview=response_data['secret'][:8] + '...')
-                    log_event('2fa_qr_generated', 'QR code generated for authenticator app',
-                             user_id=user['id'])
-            except Exception as e:
-                print(f"Error logging 2FA setup: {e}")
+            # SECURE: Don't log secret, just that it was generated
+            log_event('2fa_secret_generated', 'TOTP secret generated (32-char base32)',
+                     user_id=user['id'])
+            log_event('2fa_qr_generated', 'QR code generated for authenticator app',
+                     user_id=user['id'])
     
     # 2FA setup POST - Verification and enablement
     if request.endpoint == 'pass0.setup_2fa' and request.method == 'POST':
@@ -279,11 +253,13 @@ def log_auth_events(response):
                     if response_data and response_data.get('success'):
                         log_event('2fa_code_verified', 'TOTP code verified successfully',
                                  user_id=user['id'])
+                        # SECURE: Don't log backup codes, just count
                         backup_count = len(response_data.get('backup_codes', []))
                         log_event('2fa_backup_codes_generated', 
-                                f'{backup_count} backup codes generated',
-                                user_id=user['id'])
-                        log_event('2fa_secret_encrypted', 'Secret encrypted and stored in database',
+                                f'{backup_count} backup codes generated and displayed to user',
+                                user_id=user['id'], 
+                                note='Codes hashed with SHA-256 before storage')
+                        log_event('2fa_secret_encrypted', 'TOTP secret encrypted with Fernet and stored',
                                  user_id=user['id'])
                         log_event('2fa_enabled', '✓ 2FA ENABLED SUCCESSFULLY',
                                  user_id=user['id'], ip_address=request.remote_addr)
@@ -313,7 +289,7 @@ def log_auth_events(response):
         if response.status_code == 200:
             user = get_current_user()
             if user:
-                log_event('2fa_disabled', '2FA DISABLED by user',
+                log_event('2fa_disabled', '2FA DISABLED by user - secret and backup codes deleted',
                          user_id=user['id'], ip_address=request.remote_addr)
     
     # Backup codes regeneration
@@ -326,32 +302,10 @@ def log_auth_events(response):
                     backup_count = len(response_data.get('backup_codes', []))
                     log_event('backup_codes_regenerated', 
                              f'{backup_count} new backup codes generated - old codes invalidated',
-                             user_id=user['id'])
+                             user_id=user['id'],
+                             note='New codes displayed to user, hashed before storage')
                 except Exception as e:
                     print(f"Error logging backup codes: {e}")
-    
-    # Device listing
-    if request.endpoint == 'pass0.list_devices' and request.method == 'GET':
-        if response.status_code == 200:
-            user = get_current_user()
-            if user:
-                try:
-                    response_data = response.get_json()
-                    device_count = len(response_data.get('devices', []))
-                    log_event('devices_listed', 
-                             f'User viewed {device_count} trusted device(s)',
-                             user_id=user['id'])
-                except Exception as e:
-                    print(f"Error logging devices list: {e}")
-    
-    # Device revocation
-    if request.endpoint == 'pass0.revoke_device' and request.method == 'POST':
-        if response.status_code == 200:
-            user = get_current_user()
-            if user:
-                device_id = request.view_args.get('device_id')
-                log_event('device_revoked', 'Device trust revoked',
-                         user_id=user['id'], device_id=device_id)
     
     # Logout
     if request.endpoint == 'pass0.logout':

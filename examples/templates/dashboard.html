@@ -100,17 +100,6 @@
             border: 2px solid #ffc107;
         }
         
-        .device {
-            background: #f8f9fa;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
         .log-entry {
             background: #f8f9fa;
             padding: 12px;
@@ -179,8 +168,7 @@
     
     <div class="tabs">
         <button class="tab active" onclick="switchTab('overview')">Overview</button>
-        <button class="tab" onclick="switchTab('security')">Security</button>
-        <button class="tab" onclick="switchTab('devices')">Devices</button>
+        <button class="tab" onclick="switchTab('security')">2FA</button>
         <button class="tab" onclick="switchTab('logs')">Event Logs</button>
     </div>
     
@@ -227,17 +215,6 @@
         </div>
     </div>
     
-    <div id="tab-devices" class="tab-content">
-        <div class="card">
-            <h2>Trusted Devices</h2>
-            <p style="margin-bottom: 15px; color: #6c757d;">
-                Devices that can skip 2FA verification.
-            </p>
-            <button onclick="loadDevices()">Refresh</button>
-            <div id="devices-list"></div>
-        </div>
-    </div>
-    
     <div id="tab-logs" class="tab-content">
         <div class="card">
             <h2>Security Event Logs</h2>
@@ -264,7 +241,6 @@
             document.getElementById('tab-' + tabName).classList.add('active');
             event.target.classList.add('active');
             
-            if (tabName === 'devices') loadDevices();
             if (tabName === 'logs') loadLogs();
         }
         
@@ -349,36 +325,6 @@
                             ${codesHTML}
                         </div>
                     `;
-                });
-        }
-        
-        function loadDevices() {
-            fetch('/auth/devices')
-                .then(r => r.json())
-                .then(data => {
-                    const div = document.getElementById('devices-list');
-                    if (data.devices.length === 0) {
-                        div.innerHTML = '<p style="margin-top: 15px;">No trusted devices.</p>';
-                        return;
-                    }
-                    div.innerHTML = data.devices.map(d => `
-                        <div class="device">
-                            <div>
-                                <strong>${d.device_name || 'Unknown'}</strong><br>
-                                <small>Last: ${new Date(d.last_seen).toLocaleString()}</small>
-                            </div>
-                            <button onclick="revokeDevice(${d.id})" class="danger">Revoke</button>
-                        </div>
-                    `).join('');
-                });
-        }
-        
-        function revokeDevice(id) {
-            if (!confirm('Revoke?')) return;
-            fetch(`/auth/devices/${id}/revoke`, {method: 'POST'})
-                .then(() => {
-                    alert('Revoked');
-                    loadDevices();
                 });
         }
         

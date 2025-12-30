@@ -1,33 +1,34 @@
+```markdown
 # flask-pass0
 
-Lightweight passwordless authentication for Flask with magic links, two-factor authentication, and device binding.
+Lightweight passwordless authentication for Flask with magic links and two-factor authentication.
 
-Alpha version
+**Alpha version** API may change
 
-**WARNING: InMemoryStorageAdapter is for development only.** It loses all data on restart and cannot scale across multiple processes. Use SQLAlchemyStorageAdapter or implement a custom adapter for non-dev environments.
+**WARNING: InMemoryStorageAdapter is for development only.** Use SQLAlchemyStorageAdapter or implement a custom adapter for production.
 
 ## Features
 
 - **Magic Link Authentication** - Email-based passwordless login
-- **Two-Factor Authentication (2FA)** - TOTP support with QR code generation
-- **Device Binding** - Trust and manage user devices
+- **Two-Factor Authentication (2FA)** - TOTP support with QR code generation and backup codes
 - **Flexible Storage** - Works with in-memory dict, SQLAlchemy, or custom backends
-- **Session Management** - Secure session handling
+- **Session Management** - Secure session handling with regeneration
+- **API-First Design** - Returns JSON, configurable for template-based apps
 
 ## Quick Start
 
 ```python
 from flask import Flask
-from flask_pass0 import FlaskPass0Auth
+from flask_pass0 import Pass0
+from flask_pass0.storage import SQLAlchemyStorageAdapter
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
+app.config['PASS0_2FA_ENABLED'] = True
+app.config['PASS0_2FA_VERIFY_ROUTE'] = 'verify_2fa_page'  # Required if 2FA enabled
 
-auth = FlaskPass0Auth(
-    app=app,
-    magic_link={'enabled': True},
-    two_factor={'enabled': True}
-)
+storage = SQLAlchemyStorageAdapter(user_model=User, session=db.session, secret_key=app.config['SECRET_KEY'])
+pass0 = Pass0(app, storage_adapter=storage)
 ```
 
 ## Installation
@@ -39,10 +40,19 @@ pip install flask-pass0
 Optional dependencies:
 ```bash
 pip install flask-pass0[all]  # All features
-pip install flask-pass0[twofa]  # 2FA only
+pip install flask-pass0[2fa]  # 2FA only
 pip install flask-pass0[email]  # Email support
+```
+
+## Configuration
+
+```python
+app.config['PASS0_2FA_ENABLED'] = True
+app.config['PASS0_2FA_VERIFY_ROUTE'] = 'your_2fa_route'  # Required when 2FA enabled
+app.config['PASS0_DEV_MODE'] = False  # Logs magic links instead of emailing
 ```
 
 ## License
 
 MIT
+```
