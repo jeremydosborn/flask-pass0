@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flask-pass0"
-version = "0.3.2"
-description = "Passwordless authentication for Flask with magic links, 2FA, and device binding."
+version = "0.4.0"
+description = "Passwordless authentication for Flask with magic links and 2FA."
 readme = "README.md"
 authors = [
     { name = "Jeremy Osborn", email = "jeremy@example.com" }
@@ -36,14 +36,12 @@ dependencies = [
 sqlalchemy = ["Flask-SQLAlchemy>=2.5.0"]
 email = ["Flask-Mail>=0.9.1"]
 twofa = ["pyotp>=2.8.0", "qrcode[pil]>=7.0.0", "cryptography>=41.0.0"]
-devices = ["user-agents>=2.2.0"]
 all = [
     "Flask-SQLAlchemy>=2.5.0",
     "Flask-Mail>=0.9.1",
     "pyotp>=2.8.0",
     "qrcode[pil]>=7.0.0",
-    "cryptography>=41.0.0",
-    "user-agents>=2.2.0"
+    "cryptography>=41.0.0"
 ]
 
 [project.urls]
