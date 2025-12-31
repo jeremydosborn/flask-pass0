@@ -2,7 +2,7 @@
 
 Lightweight passwordless authentication for Flask with magic links and two-factor authentication.
 
-WIP - API may change
+WPI: API may change
 
 WARNING: InMemoryStorageAdapter is for development only. Use SQLAlchemyStorageAdapter or implement a custom adapter for production.
 
@@ -15,7 +15,6 @@ WARNING: InMemoryStorageAdapter is for development only. Use SQLAlchemyStorageAd
 - API-First Design - Returns JSON, configurable for template-based apps
 
 ## Quick Start
-
 ```python
 from flask import Flask
 from flask_pass0 import Pass0
@@ -31,25 +30,15 @@ pass0 = Pass0(app, storage_adapter=storage)
 ```
 
 ## Installation
-
 ```bash
 pip install flask-pass0
 ```
 
-Optional dependencies:
-
-```bash
-pip install flask-pass0[all]  # All features
-pip install flask-pass0[2fa]  # 2FA only
-pip install flask-pass0[email]  # Email support
-```
-
 ## Configuration
-
 ```python
 app.config['PASS0_2FA_ENABLED'] = True
 app.config['PASS0_2FA_VERIFY_ROUTE'] = 'your_2fa_route'  # Required when 2FA enabled
-app.config['PASS0_DEV_MODE'] = False  # Logs magic links instead of emailing
+app.config['PASS0_DEV_MODE'] = False  # Logs magic links instead of emailing when True
 ```
 
 ## License
