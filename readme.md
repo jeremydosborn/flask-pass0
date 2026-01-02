@@ -4,7 +4,7 @@ Lightweight passwordless authentication for Flask with magic links and two-facto
 
 WIP: API may change
 
-WARNING: InMemoryStorageAdapter is for development only. Use SQLAlchemyStorageAdapter or implement a custom adapter for production.
+WARNING: InMemoryStorageAdapter is for development only. Use SQLAlchemyStorageAdapter or implement a custom adapter for production environments.
 
 ## Features
 
