@@ -89,7 +89,6 @@ class Pass0:
         """Remove temporary authentication session keys after full login."""
         temp_keys = [
             '2fa_pending',
-            '2fa_user_id',
         ]
         
         for key in temp_keys:
@@ -152,7 +151,6 @@ class Pass0:
         
         if has_2fa:
             session['2fa_pending'] = True
-            session['2fa_user_id'] = user_id
             
             # Use configured route
             verify_route = current_app.config.get('PASS0_2FA_VERIFY_ROUTE')
@@ -333,7 +331,7 @@ class Pass0:
             if not session.get('2fa_pending'):
                 return redirect(url_for('pass0.login'))
             
-            user_id = session.get('2fa_user_id')
+            user_id = session.get('user_id')
             
             if request.method == 'GET':
                 # No template rendering in the package; host app provides UI.
@@ -360,7 +358,6 @@ class Pass0:
                 return jsonify({'error': 'Invalid code'}), 400
             
             session.pop('2fa_pending', None)
-            session.pop('2fa_user_id', None)
             session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
             
             return jsonify({'success': True, 'message': '2FA verification successful'})
