@@ -4,7 +4,7 @@ from .magic_link import generate_magic_link, verify_magic_link
 from .storage import InMemoryStorageAdapter
 from .two_factor import TwoFactorAuth
 from functools import wraps
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 class Pass0:
     """Passwordless authentication for Flask with optional 2FA."""
@@ -171,13 +171,13 @@ class Pass0:
                 }
         
         return {'allow': True, 'redirect': None, 'reason': 'authenticated'}
-    
+
     def _resolve_next_url(self, raw_value, default=None):
         """
         Resolve a user-provided or stored redirect target safely.
 
         - Only allows internal paths like "/dashboard?x=1"
-        - Rejects absolute URLs and weird paths
+        - Rejects absolute URLs and weird paths (including encoded // and scheme-relative)
         """
         if default is None:
             default = current_app.config.get('PASS0_REDIRECT_URL', '/')
@@ -185,22 +185,44 @@ class Pass0:
         if not raw_value:
             return default
 
+        raw_value = str(raw_value).strip()
+        if not raw_value:
+            return default
+
+        # Reject scheme-relative / network-path references early (//evil.com, ///evil.com, etc.)
+        if raw_value.startswith("//"):
+            return default
+
         parsed = urlparse(raw_value)
 
-        # Reject absolute URLs: http://evil.com, //evil.com, etc.
+        # Reject absolute URLs: http://evil.com, https://evil.com, etc.
         if parsed.scheme or parsed.netloc:
             return default
 
+        path = parsed.path or ""
+
+        # Decode once to catch encoded bypasses like "/%2f%2fevil.com"
+        decoded_path = unquote(path)
+
         # Require a normal internal path
-        if not parsed.path.startswith('/'):
+        if not decoded_path.startswith("/"):
+            return default
+
+        # Reject protocol-relative after decoding (//evil.com)
+        if decoded_path.startswith("//"):
+            return default
+
+        # Reject backslashes (common normalization bypass class)
+        if "\\" in decoded_path:
             return default
 
         # Normalize path + query, ignore fragment
-        path = parsed.path
+        resolved = path
         if parsed.query:
-            path = f"{path}?{parsed.query}"
+            resolved = f"{path}?{parsed.query}"
 
-        return path
+        return resolved
+
 
     def _register_routes(self):
         """Register authentication routes on the blueprint."""
