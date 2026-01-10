@@ -263,13 +263,18 @@ class Pass0:
                 current_app.logger.error(f"Error generating magic link: {str(e)}")
                 return jsonify({'error': str(e)}), 500
         
+        # auth.py - Replace lines 266-294 with this:
+
         @self.blueprint.route('/verify/<token>')
         def verify(token):
             """Verify a magic link token and proceed with auth flow."""
             result = verify_magic_link(token, storage=self.storage)
             
             if not result['success']:
-                return redirect(url_for('pass0.login', error=result['error']))
+                # Pass both error and hint (if present) to login page
+                return redirect(url_for('pass0.login', 
+                                        error=result['error'],
+                                        hint=result.get('hint', '')))
             
             user = result['user']
             user_id = user.get('id')

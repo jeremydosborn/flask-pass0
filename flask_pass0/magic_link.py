@@ -118,7 +118,11 @@ def verify_magic_link(token, storage=None):
         
         # Generic error - don't reveal why it failed
         if not token_data:
-            return {'success': False, 'error': 'Invalid or expired token'}
+            return {
+                'success': False,
+                'error': 'Invalid or expired token',
+                'hint': 'This link may have expired, been already used, or your account may not exist. Try requesting a new link or sign up if you don\'t have an account.'
+            }
         
         email = token_data.get('email')
         
@@ -127,7 +131,11 @@ def verify_magic_link(token, storage=None):
         
         # Same generic error - don't reveal if user exists or not
         if not user:
-            return {'success': False, 'error': 'Invalid or expired token'}
+            return {
+                'success': False,
+                'error': 'Invalid or expired token',
+                'hint': 'This link may have expired, been already used, or your account may not exist. Try requesting a new link or sign up if you don\'t have an account.'
+            }
         
         # Success - token valid AND user exists
         next_url = token_data.get('next_url')
