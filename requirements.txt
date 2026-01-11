@@ -11,6 +11,7 @@ pyotp>=2.9.0
 qrcode>=7.4
 webauthn>=2.0.0
 user-agents>=2.2.0
+Pillow>=9.0.0
 
 # Cryptography & encoding (transitive but used directly)
 cryptography>=41.0.0

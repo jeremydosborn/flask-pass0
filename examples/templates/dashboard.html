@@ -24,6 +24,7 @@
         }
         h1 { font-size: 24px; }
         h2 { font-size: 20px; margin-bottom: 15px; }
+        h3 { font-size: 18px; margin: 20px 0 10px 0; }
         a { color: #007bff; text-decoration: none; }
         a:hover { text-decoration: underline; }
         
@@ -100,6 +101,36 @@
             border: 2px solid #ffc107;
         }
         
+        .passkey-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 3px solid #007bff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .passkey-info {
+            flex: 1;
+        }
+        
+        .passkey-label {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .passkey-meta {
+            font-size: 13px;
+            color: #6c757d;
+        }
+        
+        .passkey-actions button {
+            margin: 0 0 0 10px;
+        }
+        
         .log-entry {
             background: #f8f9fa;
             padding: 12px;
@@ -158,6 +189,21 @@
             font-family: monospace;
             font-size: 14px;
         }
+        
+        .info-box {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
     </style>
 </head>
 <body>
@@ -168,6 +214,7 @@
     
     <div class="tabs">
         <button class="tab active" onclick="switchTab('overview')">Overview</button>
+        <button class="tab" onclick="switchTab('passkeys')">Passkeys</button>
         <button class="tab" onclick="switchTab('security')">2FA</button>
         <button class="tab" onclick="switchTab('logs')">Event Logs</button>
     </div>
@@ -178,6 +225,39 @@
             <div class="user-info">
                 <p><strong>Email:</strong> {{ user.email }}</p>
                 <p><strong>User ID:</strong> {{ user.id }}</p>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Authentication Methods</h2>
+            <div style="margin-top: 15px;">
+                <p><strong>Primary:</strong> Passkey (Touch ID, Face ID, Windows Hello)</p>
+                <p style="margin-top: 10px;"><strong>Fallback:</strong> Magic Link (email)</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="tab-passkeys" class="tab-content">
+        <div class="card">
+            <h2>Your Passkeys</h2>
+            <p style="color: #6c757d; margin-bottom: 15px;">
+                Manage devices that can sign in with Touch ID, Face ID, or Windows Hello.
+            </p>
+            
+            <div id="passkeys-list">
+                <div class="empty-state">Loading passkeys...</div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <button onclick="addNewPasskey()">Add New Passkey</button>
+            </div>
+            
+            <div class="info-box" style="margin-top: 20px;">
+                <strong>💡 About Passkeys</strong>
+                <p style="margin-top: 10px;">
+                    Passkeys are stored securely on your device and synced via iCloud Keychain (Apple) or 
+                    Google Password Manager (Android). They can't be phished and are more secure than passwords.
+                </p>
             </div>
         </div>
     </div>
@@ -202,7 +282,7 @@
             </div>
             
             <div id="2fa-setup" class="hidden">
-                <h3 style="margin-top: 20px;">Setup 2FA</h3>
+                <h3>Setup 2FA</h3>
                 <p>Scan this QR code with your authenticator app</p>
                 <div id="qr-code"></div>
                 <p>Or enter manually: <code id="secret"></code></p>
@@ -228,7 +308,7 @@
             </div>
             
             <div id="logs-container">
-                <p style="text-align: center; padding: 40px; color: #6c757d;">Loading logs...</p>
+                <div class="empty-state">Loading logs...</div>
             </div>
         </div>
     </div>
@@ -242,17 +322,169 @@
             event.target.classList.add('active');
             
             if (tabName === 'logs') loadLogs();
+            if (tabName === 'passkeys') loadPasskeys();
         }
         
+        // ==================== Passkeys Functions ====================
+        
+        async function loadPasskeys() {
+            try {
+                const res = await fetch('/auth/passkeys');
+                const data = await res.json();
+                
+                const container = document.getElementById('passkeys-list');
+                
+                if (!data.passkeys || data.passkeys.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No passkeys registered yet.</div>';
+                    return;
+                }
+                
+                container.innerHTML = data.passkeys.map(pk => {
+                    const created = new Date(pk.created_at).toLocaleDateString();
+                    const lastUsed = pk.last_used_at ? 
+                        new Date(pk.last_used_at).toLocaleString() : 
+                        'Never used';
+                    
+                    return `
+                        <div class="passkey-item">
+                            <div class="passkey-info">
+                                <div class="passkey-label">Passkey #${pk.id}</div>
+                                <div class="passkey-meta">
+                                    Created: ${created} | Last used: ${lastUsed}
+                                </div>
+                            </div>
+                            <div class="passkey-actions">
+                                <button onclick="revokePasskey(${pk.id})" class="danger">Revoke</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+            } catch (err) {
+                console.error('Error loading passkeys:', err);
+                document.getElementById('passkeys-list').innerHTML = 
+                    '<div class="empty-state" style="color: red;">Error loading passkeys</div>';
+            }
+        }
+        
+        async function addNewPasskey() {
+            try {
+                // Get registration options from server
+                const optionsRes = await fetch('/auth/passkey/register/options', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: '{{ user.email }}' })
+                });
+                
+                const options = await optionsRes.json();
+                if (options.error) {
+                    alert('Error: ' + options.error);
+                    return;
+                }
+                
+                // Prepare options for WebAuthn API
+                options.challenge = base64urlToBuffer(options.challenge);
+                options.user.id = base64urlToBuffer(options.user.id);
+                
+                options.authenticatorSelection = {
+                    authenticatorAttachment: 'platform',
+                    requireResidentKey: true,
+                    residentKey: 'required',
+                    userVerification: 'required'
+                };
+                
+                // Prompt user with Touch ID/Face ID
+                const credential = await navigator.credentials.create({ publicKey: options });
+                
+                // Send credential to server
+                const credentialJSON = {
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    response: {
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                        attestationObject: bufferToBase64url(credential.response.attestationObject),
+                    },
+                    type: credential.type,
+                    transports: credential.response.getTransports ? credential.response.getTransports() : ['internal']
+                };
+                
+                const verifyRes = await fetch('/auth/passkey/register/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ credential: credentialJSON })
+                });
+                
+                const result = await verifyRes.json();
+                
+                if (result.success) {
+                    alert('New passkey added successfully!');
+                    loadPasskeys();
+                } else {
+                    alert('Failed to add passkey: ' + (result.error || 'Unknown error'));
+                }
+                
+            } catch (err) {
+                console.error('Error adding passkey:', err);
+                if (err.name === 'NotAllowedError') {
+                    alert('Passkey registration cancelled');
+                } else {
+                    alert('Error adding passkey: ' + err.message);
+                }
+            }
+        }
+        
+        async function revokePasskey(passkeyId) {
+            if (!confirm('Revoke this passkey? You won\'t be able to use it to sign in anymore.')) {
+                return;
+            }
+            
+            try {
+                const res = await fetch(`/auth/passkeys/${passkeyId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert('Passkey revoked successfully');
+                    loadPasskeys();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to revoke passkey'));
+                }
+            } catch (err) {
+                console.error('Error revoking passkey:', err);
+                alert('Error revoking passkey: ' + err.message);
+            }
+        }
+        
+        // Helper functions for base64url encoding/decoding
+        function base64urlToBuffer(base64url) {
+            const padding = '='.repeat((4 - base64url.length % 4) % 4);
+            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/') + padding;
+            const binary = atob(base64);
+            const buffer = new ArrayBuffer(binary.length);
+            const bytes = new Uint8Array(buffer);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return buffer;
+        }
+        
+        function bufferToBase64url(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+        
+        // ==================== 2FA Functions ====================
+        
         function setup2FA() {
-            console.log('setup2FA called');
             fetch('/auth/2fa/setup')
-                .then(r => {
-                    console.log('Response status:', r.status);
-                    return r.json();
-                })
+                .then(r => r.json())
                 .then(data => {
-                    console.log('Response data:', data);
                     if (data.error) {
                         alert('Error: ' + data.error);
                         return;
@@ -328,18 +560,15 @@
                 });
         }
         
+        // ==================== Logs Functions ====================
+        
         function loadLogs() {
-            console.log('loadLogs called');
             fetch('/api/security-logs')
-                .then(r => {
-                    console.log('Logs response status:', r.status);
-                    return r.json();
-                })
+                .then(r => r.json())
                 .then(data => {
-                    console.log('Logs data:', data);
                     const div = document.getElementById('logs-container');
                     if (data.events.length === 0) {
-                        div.innerHTML = '<p style="text-align: center; padding: 40px;">No events yet.</p>';
+                        div.innerHTML = '<div class="empty-state">No events yet.</div>';
                         return;
                     }
                     div.innerHTML = data.events.map(e => {
@@ -360,7 +589,7 @@
                 .catch(err => {
                     console.error('Logs fetch error:', err);
                     document.getElementById('logs-container').innerHTML = 
-                        `<p style="color: red;">Error loading logs: ${err.message}</p>`;
+                        '<div class="empty-state" style="color: red;">Error loading logs</div>';
                 });
         }
         
@@ -373,6 +602,7 @@
                 });
         }
         
+        // Load initial data
         loadLogs();
     </script>
 </body>

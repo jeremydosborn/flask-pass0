@@ -25,14 +25,18 @@ app.config['PASS0_2FA_REQUIRED'] = False
 app.config['PASS0_TOTP_ISSUER'] = 'Flask-Pass0 Demo'
 app.config['PASS0_LOGIN_REDIRECT'] = '/'
 app.config['PASS0_MAGIC_LINK_ENABLED'] = True
-app.config['PASS0_PRIMARY_AUTH'] = 'magic_link'
+app.config['PASS0_PRIMARY_AUTH'] = 'passkey'
 app.config['PASS0_2FA_VERIFY_ROUTE'] = 'verify_2fa_page'
+app.config['PASS0_RP_ID'] = 'localhost'
+app.config['PASS0_RP_NAME'] = 'Flask-Pass0 Demo'
+app.config['PASS0_ORIGIN'] = 'http://localhost:5000'
 
 db = SQLAlchemy(app)
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # ADD THIS LINE
 
     def to_dict(self):
         return {"id": self.id, "email": self.email}
@@ -110,7 +114,8 @@ def login_page():
     """Login page - redirect if already logged in"""
     if get_current_user():
         return redirect('/')
-    return render_template('auth.html', config=app.config)
+    return render_template('auth.html', 
+                         primary_auth=app.config['PASS0_PRIMARY_AUTH'])
 
 @app.route('/create-user')
 def create_user():

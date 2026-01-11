@@ -101,6 +101,9 @@ class InMemoryStorageAdapter(StorageAdapter):
         self.email_2fa_codes = {}
         self.trusted_devices = {}
         self.device_challenges = {}
+
+        self.passkey_credentials = {} 
+        self.passkey_credential_counter = 0 
         
         self.encryption_key = encryption_key or Fernet.generate_key()
         self.cipher = Fernet(self.encryption_key)
@@ -293,6 +296,61 @@ class InMemoryStorageAdapter(StorageAdapter):
             challenge['used'] = True
             return challenge
 
+# ==================== Passkey Methods ====================
+    
+    def store_passkey_credential(self, credential_data):
+        """Store a new passkey credential."""
+        self.passkey_credential_counter += 1
+        credential_id_key = credential_data['credential_id']
+        
+        credential = {
+            'id': self.passkey_credential_counter,
+            'user_id': credential_data['user_id'],
+            'credential_id': credential_data['credential_id'],
+            'public_key': credential_data['public_key'],
+            'sign_count': credential_data['sign_count'],
+            'transports': credential_data.get('transports'),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'last_used_at': None,
+        }
+        
+        self.passkey_credentials[credential_id_key] = credential
+        return credential
+    
+    def get_passkey_credentials(self, user_id):
+        """Get all passkey credentials for a user."""
+        return [
+            cred for cred in self.passkey_credentials.values()
+            if cred['user_id'] == user_id
+        ]
+    
+    def get_passkey_credential_by_id(self, credential_id):
+        """Get a passkey credential by credential_id."""
+        return self.passkey_credentials.get(credential_id)
+    
+    def update_passkey_sign_count(self, credential_db_id, new_sign_count):
+        """Update the sign count for a credential."""
+        for cred in self.passkey_credentials.values():
+            if cred['id'] == credential_db_id:
+                cred['sign_count'] = new_sign_count
+                break
+    
+    def update_passkey_last_used(self, credential_db_id):
+        """Update the last_used_at timestamp for a credential."""
+        for cred in self.passkey_credentials.values():
+            if cred['id'] == credential_db_id:
+                cred['last_used_at'] = datetime.now(timezone.utc).isoformat()
+                break
+
+    def delete_passkey_credential(self, credential_db_id):
+        """Delete a passkey credential by its database ID."""
+        with self._lock:
+            # Find and remove the credential
+            for cred_id_key, cred in list(self.passkey_credentials.items()):
+                if cred['id'] == credential_db_id:
+                    del self.passkey_credentials[cred_id_key]
+                    break
+
 class SQLAlchemyStorageAdapter(StorageAdapter):
     """Production storage using SQLAlchemy with encryption."""
     
@@ -366,6 +424,18 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
             Column('expires_at', DateTime(timezone=True), nullable=False),
             Column('used', Boolean, default=False)
         )
+
+        # Passkey credentials table
+        self.passkey_credentials_table = Table('pass0_passkey_credentials', metadata,
+            Column('id', Integer, primary_key=True),
+            Column('user_id', Integer, nullable=False),
+            Column('credential_id', String(1024), unique=True, nullable=False),
+            Column('public_key', Text, nullable=False),
+            Column('sign_count', Integer, default=0, nullable=False),
+            Column('transports', String(255)),
+            Column('created_at', DateTime(timezone=True), nullable=False),
+            Column('last_used_at', DateTime(timezone=True))
+        )
         
         # Generate proper Fernet key (always use generated key for security)
         self.encryption_key = Fernet.generate_key()
@@ -406,7 +476,7 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
                     created_at=datetime.now(timezone.utc)
                 ).returning(self.user_table)
             )
-            self.session.commit()
+            self.session.flush()
             user = dict(result.fetchone()._mapping)
         
         return user
@@ -674,6 +744,109 @@ class SQLAlchemyStorageAdapter(StorageAdapter):
             return None
         
         return dict(result._mapping)
+
+# ==================== Passkey Methods (SQLAlchemyStorageAdapter) ====================
+    
+    def store_passkey_credential(self, credential_data):
+        """Store a new passkey credential."""
+        self.session.execute(
+            self.passkey_credentials_table.insert().values(
+                user_id=credential_data['user_id'],
+                credential_id=credential_data['credential_id'],
+                public_key=credential_data['public_key'],
+                sign_count=credential_data['sign_count'],
+                transports=credential_data.get('transports'),
+                created_at=datetime.now(timezone.utc)
+            )
+        )
+        self.session.commit()
+        return credential_data
+        
+    def get_passkey_credentials(self, user_id):
+        """Get all passkey credentials for a user."""
+        from sqlalchemy import Table, Column, Integer, String, DateTime, Text, MetaData
+        
+        try:
+            metadata = MetaData()
+            passkey_table = Table('pass0_passkey_credentials', metadata,
+                autoload_with=self.session.get_bind()
+            )
+            
+            results = self.session.execute(
+                passkey_table.select().where(passkey_table.c.user_id == user_id)
+            ).fetchall()
+            
+            return [dict(row._mapping) for row in results]
+        except Exception:
+            return []
+    
+    def get_passkey_credential_by_id(self, credential_id):
+        """Get a passkey credential by credential_id."""
+        from sqlalchemy import Table, MetaData
+        
+        try:
+            metadata = MetaData()
+            passkey_table = Table('pass0_passkey_credentials', metadata,
+                autoload_with=self.session.get_bind()
+            )
+            
+            result = self.session.execute(
+                passkey_table.select().where(passkey_table.c.credential_id == credential_id)
+            ).fetchone()
+            
+            return dict(result._mapping) if result else None
+        except Exception:
+            return None
+    
+    def update_passkey_sign_count(self, credential_db_id, new_sign_count):
+        """Update the sign count for a credential."""
+        from sqlalchemy import Table, MetaData
+        
+        try:
+            metadata = MetaData()
+            passkey_table = Table('pass0_passkey_credentials', metadata,
+                autoload_with=self.session.get_bind()
+            )
+            
+            self.session.execute(
+                passkey_table.update().where(
+                    passkey_table.c.id == credential_db_id
+                ).values(sign_count=new_sign_count)
+            )
+            self.session.commit()
+        except Exception:
+            pass
+
+    def update_passkey_last_used(self, credential_db_id):
+        """Update the last_used_at timestamp for a credential."""
+        from sqlalchemy import Table, MetaData
+        
+        try:
+            metadata = MetaData()
+            passkey_table = Table('pass0_passkey_credentials', metadata,
+                autoload_with=self.session.get_bind()
+            )
+            
+            self.session.execute(
+                passkey_table.update().where(
+                    passkey_table.c.id == credential_db_id
+                ).values(last_used_at=datetime.now(timezone.utc))
+            )
+            self.session.commit()
+        except Exception:
+            pass
+    
+    def delete_passkey_credential(self, credential_db_id):
+        """Delete a passkey credential by its database ID."""
+        try:
+            self.session.execute(
+                self.passkey_credentials_table.delete().where(
+                    self.passkey_credentials_table.c.id == credential_db_id
+                )
+            )
+            self.session.commit()
+        except Exception:
+            pass
 
 # Legacy storage
 _users = {}

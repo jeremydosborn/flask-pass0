@@ -5,6 +5,12 @@ from .storage import InMemoryStorageAdapter
 from .two_factor import TwoFactorAuth
 from functools import wraps
 from urllib.parse import urlparse
+from .passkey import (
+    generate_passkey_registration_options,
+    verify_passkey_registration,
+    generate_passkey_authentication_options,
+    verify_passkey_authentication,
+)
 
 class Pass0:
     """Passwordless authentication for Flask with optional 2FA."""
@@ -24,7 +30,12 @@ class Pass0:
                 'name': 'Magic Link',
                 'description': 'Receive a secure login link via email'
             },
-        }
+            'passkey': {  
+            'enabled': True,
+            'name': 'Passkey',
+            'description': 'Use biometrics or security key'
+        },
+    }
         
         if app is not None:
             self.init_app(app)
@@ -43,6 +54,11 @@ class Pass0:
         
         # Primary auth method
         app.config.setdefault('PASS0_PRIMARY_AUTH', 'magic_link')
+
+        # ADD THESE 3 LINES:
+        app.config.setdefault('PASS0_RP_ID', 'localhost')
+        app.config.setdefault('PASS0_RP_NAME', 'Flask-Pass0')
+        app.config.setdefault('PASS0_ORIGIN', 'http://localhost:5000')
         
         # 2FA configuration
         app.config.setdefault('PASS0_2FA_ENABLED', False)
@@ -269,6 +285,203 @@ class Pass0:
             raw_next = result.get('next_url') or session.pop('next', None)
             next_url = self._resolve_next_url(raw_next)
             return redirect(next_url)
+
+        # ==================== Passkey Routes ====================
+        
+        @self.blueprint.route('/passkey/register/options', methods=['POST'])
+        def passkey_register_options():
+            """Generate passkey registration options."""
+            data = request.get_json()
+            email = data.get('email')
+            
+            if not email:
+                return jsonify({'error': 'Email is required'}), 400
+            
+            try:
+                if not self.auth_methods.get('passkey', {}).get('enabled', False):
+                    return jsonify({'error': 'Passkey authentication is not enabled'}), 400
+                
+                # Get or prepare user
+                user = self.storage.get_user_by_email(email)
+                user_id = user['id'] if user else 0  # Temporary ID for new users
+                
+                options = generate_passkey_registration_options(email, user_id)
+                
+                return options, 200, {'Content-Type': 'application/json'}
+                
+            except Exception as e:
+                current_app.logger.error(f"Error generating passkey registration options: {str(e)}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.blueprint.route('/passkey/register/verify', methods=['POST'])
+        def passkey_register_verify():
+            """Verify passkey registration and authenticate user."""
+            data = request.get_json()
+            credential = data.get('credential')
+            
+            if not credential:
+                return jsonify({'error': 'Credential is required'}), 400
+            
+            try:
+                result = verify_passkey_registration(credential, self.storage)
+                
+                if not result['success']:
+                    return jsonify({'error': result['error']}), 401
+                
+                user = result['user']
+                
+                # Set session
+                session['user_id'] = user['id']
+                self._regenerate_session()
+                
+                # Check 2FA
+                check_result = self._check_2fa(user)
+                
+                if not check_result['allow']:
+                    return jsonify({
+                        'requires_2fa': True,
+                        'redirect': check_result['redirect']
+                    }), 200
+                
+                # No 2FA - complete login
+                session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
+                self._cleanup_temp_session_keys()
+                
+                return jsonify({
+                    'success': True,
+                    'user': {
+                        'id': user['id'],
+                        'email': user['email']
+                    }
+                }), 200
+                
+            except Exception as e:
+                current_app.logger.error(f"Error verifying passkey registration: {str(e)}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.blueprint.route('/passkey/login/options', methods=['POST'])
+        def passkey_login_options():
+            """Generate passkey authentication options."""
+            data = request.get_json()
+            email = data.get('email')  # Optional
+            
+            try:
+                if not self.auth_methods.get('passkey', {}).get('enabled', False):
+                    return jsonify({'error': 'Passkey authentication is not enabled'}), 400
+                
+                options = generate_passkey_authentication_options(email, self.storage)
+                
+                return options, 200, {'Content-Type': 'application/json'}
+                
+            except Exception as e:
+                current_app.logger.error(f"Error generating passkey authentication options: {str(e)}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.blueprint.route('/passkey/login/verify', methods=['POST'])
+        def passkey_login_verify():
+            """Verify passkey authentication."""
+            data = request.get_json()
+            credential = data.get('credential')
+            
+            if not credential:
+                return jsonify({'error': 'Credential is required'}), 400
+            
+            try:
+                result = verify_passkey_authentication(credential, self.storage)
+                
+                if not result['success']:
+                    return jsonify({'error': result['error']}), 401
+                
+                user = result['user']
+                
+                # Set session
+                session['user_id'] = user['id']
+                self._regenerate_session()
+                
+                # Check 2FA
+                check_result = self._check_2fa(user)
+                
+                if not check_result['allow']:
+                    return jsonify({
+                        'requires_2fa': True,
+                        'redirect': check_result['redirect']
+                    }), 200
+                
+                # No 2FA - complete login
+                session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
+                self._cleanup_temp_session_keys()
+                
+                return jsonify({
+                    'success': True,
+                    'user': {
+                        'id': user['id'],
+                        'email': user['email']
+                    }
+                }), 200
+                
+            except Exception as e:
+                current_app.logger.error(f"Error verifying passkey authentication: {str(e)}")
+                return jsonify({'error': str(e)}), 500
+
+
+        # ==================== Passkey Management Routes ====================
+
+        @self.blueprint.route('/passkeys', methods=['GET'])
+        def list_passkeys():
+            """List all passkeys for the current user."""
+            if not self.is_authenticated():
+                return jsonify({'error': 'Unauthorized'}), 401
+            
+            user_id = session.get('user_id')
+            
+            try:
+                passkeys = self.storage.get_passkey_credentials(user_id)
+                
+                return jsonify({
+                    'success': True,
+                    'passkeys': passkeys
+                })
+                
+            except Exception as e:
+                current_app.logger.error(f"Error listing passkeys: {str(e)}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.blueprint.route('/passkeys/<int:passkey_id>', methods=['DELETE'])
+        def revoke_passkey(passkey_id):
+            """Revoke a specific passkey."""
+            if not self.is_authenticated():
+                return jsonify({'error': 'Unauthorized'}), 401
+            
+            user_id = session.get('user_id')
+            
+            try:
+                # Get the passkey to verify ownership
+                passkey = None
+                passkeys = self.storage.get_passkey_credentials(user_id)
+                
+                for pk in passkeys:
+                    if pk['id'] == passkey_id:
+                        passkey = pk
+                        break
+                
+                if not passkey:
+                    return jsonify({'error': 'Passkey not found'}), 404
+                
+                # Verify the passkey belongs to this user
+                if passkey['user_id'] != user_id:
+                    return jsonify({'error': 'Unauthorized'}), 403
+                
+                # Delete the passkey
+                self.storage.delete_passkey_credential(passkey_id)
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Passkey revoked successfully'
+                })
+                
+            except Exception as e:
+                current_app.logger.error(f"Error revoking passkey: {str(e)}")
+                return jsonify({'error': str(e)}), 500
         
         # ==================== 2FA Routes ====================
         
