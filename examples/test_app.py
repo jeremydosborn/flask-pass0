@@ -101,12 +101,21 @@ def index():
     twofa_enabled = False
     if hasattr(pass0, 'two_factor') and pass0.two_factor:
         twofa_enabled = pass0.two_factor.is_2fa_enabled(user['id'])
+    
+    # Get primary auth config
+    primary_auth = app.config.get('PASS0_PRIMARY_AUTH', 'magic_link')
+    auth_methods = {
+        'passkey': 'Passkey (Touch ID, Face ID, Windows Hello)',
+        'magic_link': 'Magic Link (email)'
+    }
+    secondary_auth = 'magic_link' if primary_auth == 'passkey' else 'passkey'
 
     return render_template(
         'dashboard.html',
         user=user,
         twofa_enabled=twofa_enabled,
-        config=app.config
+        primary_method=auth_methods[primary_auth],
+        secondary_method=auth_methods[secondary_auth]
     )
 
 @app.route('/login')

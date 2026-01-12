@@ -229,10 +229,10 @@
         </div>
         
         <div class="card">
-            <h2>Authentication Methods</h2>
+            <h2>Current Authentication Methods</h2>
             <div style="margin-top: 15px;">
-                <p><strong>Primary:</strong> Passkey (Touch ID, Face ID, Windows Hello)</p>
-                <p style="margin-top: 10px;"><strong>Fallback:</strong> Magic Link (email)</p>
+                <p><strong>Primary:</strong> {{ primary_method }}</p>
+                <p style="margin-top: 10px;"><strong>Also available as configuration option:</strong> {{ secondary_method }}</p>
             </div>
         </div>
     </div>
