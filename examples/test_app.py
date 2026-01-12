@@ -185,6 +185,110 @@ def clear_security_logs():
     return jsonify({'success': True})
 
 # ============================================================================
+# Test Runner Routes
+# ============================================================================
+
+@app.route('/tests')
+@login_required
+def tests_page():
+    """Test runner dashboard"""
+    user = get_current_user()
+    return render_template('tests.html', user=user, config=app.config)
+
+
+@app.route('/api/tests/run', methods=['POST'])
+@login_required
+def run_tests_api():
+    """Run pytest tests via API"""
+    data = request.get_json() or {}
+    test_path = data.get('test_path', '')
+    markers = data.get('markers', [])
+    verbose = data.get('verbose', True)
+    
+    user = get_current_user()
+    log_event('test_run_started', 'Test run started', 
+             user_id=user['id'], test_path=test_path or 'all')
+    
+    cmd = ['pytest']
+    
+    if test_path:
+        cmd.append(test_path)
+    
+    for marker in markers:
+        cmd.extend(['-m', marker])
+    
+    if verbose:
+        cmd.append('-v')
+    
+    cmd.extend(['--tb=short', '-c', 'pytest.ini'])
+    
+    try:
+        project_root = Path(__file__).parent.parent
+        test_dir = project_root / 'tests'
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(test_dir)
+        )
+        
+        if result.returncode == 0:
+            log_event('test_run_completed', 'Tests passed', user_id=user['id'])
+        else:
+            log_event('test_run_failed', 'Tests failed', user_id=user['id'])
+        
+        return jsonify({
+            'success': result.returncode == 0,
+            'returncode': result.returncode,
+            'stdout': result.stdout,
+            'stderr': result.stderr
+        })
+    
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'error': 'Tests timed out'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/tests/list')
+@login_required
+def list_test_files():
+    """List all test files"""
+    project_root = Path(__file__).parent.parent
+    tests_dir = project_root / 'tests'
+    
+    files = []
+    if tests_dir.exists():
+        for test_file in sorted(tests_dir.glob('test_*.py')):
+            try:
+                with open(test_file, 'r') as f:
+                    content = f.read()
+                    test_count = content.count('def test_')
+                
+                files.append({
+                    'name': test_file.name,
+                    'path': str(test_file.relative_to(tests_dir)),
+                    'test_count': test_count
+                })
+            except Exception:
+                pass
+    
+    markers = [
+        {'name': 'unit', 'description': 'Unit tests'},
+        {'name': 'integration', 'description': 'Integration tests'},
+        {'name': 'security', 'description': 'Security tests'}
+    ]
+    
+    return jsonify({
+        'files': files,
+        'markers': markers,
+        'total_tests': sum(f['test_count'] for f in files)
+    })
+
+
+# ============================================================================
 # Auth Event Logging
 # ============================================================================
 
