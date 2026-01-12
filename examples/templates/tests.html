@@ -347,6 +347,14 @@
             
             document.getElementById('stat-passed').textContent = passed;
             document.getElementById('stat-failed').textContent = failed;
+
+            // Add these lines:
+            let total = passed + failed;
+            const skippedMatch = output.match(/(\d+) skipped/);
+            if (skippedMatch) {
+                total += parseInt(skippedMatch[1]);
+            }
+            document.getElementById('stat-total').textContent = total;
             
             document.getElementById('status').innerHTML = 
                 `<span class="status ${data.success ? 'passed' : 'failed'}">

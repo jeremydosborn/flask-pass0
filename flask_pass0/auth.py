@@ -338,9 +338,10 @@ class Pass0:
                 check_result = self._check_2fa(user)
                 
                 if not check_result['allow']:
+                    redirect_url = url_for(check_result['redirect'])
                     return jsonify({
                         'requires_2fa': True,
-                        'redirect': check_result['redirect']
+                        'redirect': redirect_url
                     }), 200
                 
                 # No 2FA - complete login
@@ -402,9 +403,10 @@ class Pass0:
                 check_result = self._check_2fa(user)
                 
                 if not check_result['allow']:
+                    redirect_url = url_for(check_result['redirect'])
                     return jsonify({
                         'requires_2fa': True,
-                        'redirect': check_result['redirect']
+                        'redirect': redirect_url
                     }), 200
                 
                 # No 2FA - complete login

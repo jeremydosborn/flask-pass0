@@ -231,6 +231,11 @@
                         setTimeout(() => window.location.href = '/', 500);
                         return;
                     }
+                    // Check if requires 2FA after registration
+                    if (registerResult.requires_2fa) {
+                        window.location.href = registerResult.redirect || '/auth/2fa/verify';
+                        return;
+                    }
                 } else {
                     // Credentials exist, attempt login
                     console.log('Existing passkey found, attempting login');
@@ -239,6 +244,11 @@
                     if (loginResult.success) {
                         showInfo('Signed in successfully!');
                         setTimeout(() => window.location.href = '/', 500);
+                        return;
+                    }
+                    // **FIX: Check if requires 2FA**
+                    if (loginResult.requires_2fa) {
+                        window.location.href = loginResult.redirect || '/auth/2fa/verify';
                         return;
                     }
                 }

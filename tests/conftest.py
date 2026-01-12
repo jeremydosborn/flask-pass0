@@ -38,6 +38,11 @@ def base_config():
         "PASS0_SESSION_DURATION": 3600,    # seconds
         "PASS0_PRIMARY_AUTH": "magic_link",
 
+        # Passkey/WebAuthn config
+        "PASS0_RP_ID": "localhost",
+        "PASS0_RP_NAME": "Test App",
+        "PASS0_ORIGIN": "http://localhost:5000",
+
         # Mail defaults (dev mode suppresses sending anyway)
         "MAIL_SUPPRESS_SEND": True,
         "MAIL_SERVER": "localhost",

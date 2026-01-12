@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from flask import Flask, render_template, jsonify, session, request, redirect
 from flask_sqlalchemy import SQLAlchemy
+import subprocess
+from pathlib import Path
 
 from flask_pass0 import Pass0
 from flask_pass0.storage import SQLAlchemyStorageAdapter
@@ -401,6 +403,8 @@ def log_auth_events(response):
                              ip_address=request.remote_addr)
             except Exception as e:
                 print(f"Error logging 2FA verification: {e}")
+
+                
     
     # 2FA disable
     if request.endpoint == 'pass0.disable_2fa' and request.method == 'POST':
