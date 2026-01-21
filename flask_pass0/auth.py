@@ -85,21 +85,6 @@ class Pass0:
         
         # Register blueprint after routes are added
         app.register_blueprint(self.blueprint, url_prefix='/auth')
-    
-    def _regenerate_session(self):
-        """Regenerate session ID to prevent session fixation attacks."""
-        # Save current session data
-        session_data = dict(session)
-        
-        # Clear old session
-        session.clear()
-        
-        # Create new session with same data
-        for key, value in session_data.items():
-            session[key] = value
-        
-        # Force session to be saved
-        session.modified = True
 
     def _cleanup_temp_session_keys(self):
         """Remove temporary authentication session keys after full login."""
@@ -269,8 +254,7 @@ class Pass0:
             user_id = user.get('id')
             
             session['user_id'] = user_id
-            self._regenerate_session() 
-            
+
             check_result = self._check_2fa(user)
             
             if not check_result['allow']:
@@ -278,7 +262,6 @@ class Pass0:
             
             # Fully authenticated
             session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
-            session.pop('2fa_pending', None)
             self._cleanup_temp_session_keys() 
             
             # Safe redirect target resolution: no request.args['next'], internal paths only
@@ -332,7 +315,6 @@ class Pass0:
                 
                 # Set session
                 session['user_id'] = user['id']
-                self._regenerate_session()
                 
                 # Check 2FA
                 check_result = self._check_2fa(user)
@@ -397,7 +379,6 @@ class Pass0:
                 
                 # Set session
                 session['user_id'] = user['id']
-                self._regenerate_session()
                 
                 # Check 2FA
                 check_result = self._check_2fa(user)
@@ -526,10 +507,11 @@ class Pass0:
             self.two_factor.enable_2fa(user_id, secret, backup_codes)
             
             session.pop('temp_totp_secret', None)
-            session.pop('2fa_pending', None)
             
             if not session.get('logged_in_at'):
                 session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
+
+            self._cleanup_temp_session_keys() 
             
             return jsonify({
                 'success': True,
@@ -572,8 +554,8 @@ class Pass0:
             if not verified:
                 return jsonify({'error': 'Invalid code'}), 400
             
-            session.pop('2fa_pending', None)
             session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
+            self._cleanup_temp_session_keys() 
             
             return jsonify({'success': True, 'message': '2FA verification successful'})
         

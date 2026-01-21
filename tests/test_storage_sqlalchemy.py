@@ -414,8 +414,6 @@ class TestSQLAlchemy2FAOperations:
     
     def test_regenerate_backup_codes(self, db_app, db_user):
         """Test regenerating backup codes."""
-    def test_regenerate_backup_codes(self, db_app, db_user):
-        """Test regenerating backup codes."""
         with db_app.app_context():
             pass0 = db_app.extensions['pass0']
             storage = pass0.storage
