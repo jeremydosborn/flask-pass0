@@ -22,14 +22,11 @@ from datetime import datetime, timezone
 import secrets
 
 
-def generate_passkey_registration_options(user_email, user_id):
+def generate_passkey_registration_options():
     """
-    Generate WebAuthn registration options for a user.
+    Generate WebAuthn registration options for a new passkey.
+    No email required - user will be created upon successful registration.
     
-    Args:
-        user_email: User's email address
-        user_id: User's database ID
-        
     Returns:
         dict: Registration options to send to frontend
     """
@@ -39,23 +36,26 @@ def generate_passkey_registration_options(user_email, user_id):
     # Generate challenge
     challenge = secrets.token_bytes(32)
     
-    # Store challenge in session for verification
+    # Generate a temporary user identifier for this registration
+    temp_user_id = secrets.token_hex(16)
+    
+    # Store challenge and temp ID in session for verification
     session['passkey_challenge'] = bytes_to_base64url(challenge)
-    session['passkey_user_email'] = user_email
+    session['passkey_temp_user_id'] = temp_user_id
     
     options = generate_registration_options(
         rp_id=rp_id,
         rp_name=rp_name,
-        user_id=str(user_id).encode('utf-8'),
-        user_name=user_email,
-        user_display_name=user_email,
+        user_id=temp_user_id.encode('utf-8'),
+        user_name=f"user_{temp_user_id[:8]}",
+        user_display_name="Passkey User",
         challenge=challenge,
         authenticator_selection=AuthenticatorSelectionCriteria(
             authenticator_attachment=AuthenticatorAttachment.PLATFORM,
             resident_key=ResidentKeyRequirement.REQUIRED,
             user_verification=UserVerificationRequirement.REQUIRED
         ),
-        timeout=60000,  # 60 seconds
+        timeout=60000,
     )
     
     return options_to_json(options)
@@ -64,6 +64,7 @@ def generate_passkey_registration_options(user_email, user_id):
 def verify_passkey_registration(credential_response, storage):
     """
     Verify passkey registration response from browser.
+    Creates a new user without email.
     
     Args:
         credential_response: JSON response from browser
@@ -74,9 +75,9 @@ def verify_passkey_registration(credential_response, storage):
     """
     # Get stored challenge
     challenge = session.get('passkey_challenge')
-    user_email = session.get('passkey_user_email')
+    temp_user_id = session.get('passkey_temp_user_id')
     
-    if not challenge or not user_email:
+    if not challenge or not temp_user_id:
         return {'success': False, 'error': 'No registration in progress'}
     
     rp_id = current_app.config.get('PASS0_RP_ID', 'localhost')
@@ -90,10 +91,8 @@ def verify_passkey_registration(credential_response, storage):
             expected_origin=origin,
         )
         
-        # Get or create user
-        user = storage.get_user_by_email(user_email)
-        if not user:
-            user = storage.get_or_create_user(user_email)
+        # Create user without email (email can be None/null in DB)
+        user = storage.get_or_create_user(email=None)
         
         # Store credential
         credential_data = {
@@ -108,7 +107,7 @@ def verify_passkey_registration(credential_response, storage):
         
         # Clear session
         session.pop('passkey_challenge', None)
-        session.pop('passkey_user_email', None)
+        session.pop('passkey_temp_user_id', None)
         
         return {
             'success': True,
@@ -121,120 +120,81 @@ def verify_passkey_registration(credential_response, storage):
         return {'success': False, 'error': str(e)}
 
 
-def generate_passkey_authentication_options(user_email, storage):
+def generate_passkey_authentication_options(storage):
     """
     Generate WebAuthn authentication options.
-    
-    Args:
-        user_email: User's email address (optional, can be None for usernameless)
-        storage: Storage adapter
-        
-    Returns:
-        dict: Authentication options to send to frontend
+    Discoverable credentials (passkeys), no QR, no email.
     """
     rp_id = current_app.config.get('PASS0_RP_ID', 'localhost')
-    
-    # Generate challenge
+
     challenge = secrets.token_bytes(32)
-    
-    # Store challenge in session
     session['passkey_challenge'] = bytes_to_base64url(challenge)
-    if user_email:
-        session['passkey_user_email'] = user_email
-    
-    # Get user's registered credentials if email provided
-    allow_credentials = []
-    if user_email:
-        user = storage.get_user_by_email(user_email)
-        if user:
-            credentials = storage.get_passkey_credentials(user['id'])
-            allow_credentials = [
-                PublicKeyCredentialDescriptor(
-                    id=base64url_to_bytes(cred['credential_id']),
-                    transports=[
-                        AuthenticatorTransport(t.strip()) 
-                        for t in cred.get('transports', '').split(',') 
-                        if t.strip()
-                    ] if cred.get('transports') else None
-                )
-                for cred in credentials
-            ]
-    
+
     options = generate_authentication_options(
         rp_id=rp_id,
         challenge=challenge,
-        allow_credentials=allow_credentials if allow_credentials else None,
-        user_verification=UserVerificationRequirement.PREFERRED,
+        allow_credentials=[],  # ✅ MUST be a sequence
+        user_verification=UserVerificationRequirement.REQUIRED,
         timeout=60000,
     )
-    
-    return options_to_json(options)
 
+    return options_to_json(options)
 
 def verify_passkey_authentication(credential_response, storage):
     """
     Verify passkey authentication response from browser.
-    
-    Args:
-        credential_response: JSON response from browser
-        storage: Storage adapter
-        
-    Returns:
-        dict: {'success': bool, 'user': dict, 'error': str}
+    Uses rawId (canonical) for credential lookup.
     """
-    # Get stored challenge
-    challenge = session.get('passkey_challenge')
-    
-    if not challenge:
+
+    # ---- Challenge check ----
+    challenge_b64 = session.pop('passkey_challenge', None)
+    if not challenge_b64:
         return {'success': False, 'error': 'No authentication in progress'}
-    
+
     rp_id = current_app.config.get('PASS0_RP_ID', 'localhost')
     origin = current_app.config.get('PASS0_ORIGIN', 'http://localhost:5000')
-    
+
     try:
-        # Get credential_id from response
-        credential_id = credential_response.get('id')
-        if not credential_id:
-            credential_id = credential_response.get('rawId')
-        
-        # Look up credential in database
+        # ---- ALWAYS use rawId (canonical WebAuthn identifier) ----
+        raw_id_b64 = credential_response.get('rawId')
+        if not raw_id_b64:
+            return {'success': False, 'error': 'Missing rawId'}
+
+        # Normalize to the exact format stored during registration
+        credential_id = bytes_to_base64url(base64url_to_bytes(raw_id_b64))
+
+        # ---- Lookup credential ----
         credential = storage.get_passkey_credential_by_id(credential_id)
         if not credential:
             return {'success': False, 'error': 'Credential not found'}
-        
-        # Get user
-        user = storage.get_user_by_id(credential['user_id'])
-        if not user:
-            return {'success': False, 'error': 'User not found'}
-        
-        # Verify the authentication
+
+        # ---- Verify assertion cryptographically ----
         verification = verify_authentication_response(
             credential=credential_response,
-            expected_challenge=base64url_to_bytes(challenge),
+            expected_challenge=base64url_to_bytes(challenge_b64),
             expected_rp_id=rp_id,
             expected_origin=origin,
             credential_public_key=base64url_to_bytes(credential['public_key']),
             credential_current_sign_count=credential['sign_count'],
         )
-        
-        # Update sign count
+
+        # ---- Update counters ----
         storage.update_passkey_sign_count(
             credential['id'],
             verification.new_sign_count
         )
-        
-        # Update last used
         storage.update_passkey_last_used(credential['id'])
-        
-        # Clear session
-        session.pop('passkey_challenge', None)
-        session.pop('passkey_user_email', None)
-        
+
+        # ---- Load user ----
+        user = storage.get_user_by_id(credential['user_id'])
+        if not user:
+            return {'success': False, 'error': 'User not found'}
+
         return {
             'success': True,
             'user': user
         }
-        
+
     except Exception as e:
-        current_app.logger.error(f"Passkey authentication verification failed: {str(e)}")
+        current_app.logger.error(f"Passkey authentication failed: {e}")
         return {'success': False, 'error': str(e)}

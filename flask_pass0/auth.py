@@ -273,29 +273,20 @@ class Pass0:
         
         @self.blueprint.route('/passkey/register/options', methods=['POST'])
         def passkey_register_options():
-            """Generate passkey registration options."""
-            data = request.get_json()
-            email = data.get('email')
-            
-            if not email:
-                return jsonify({'error': 'Email is required'}), 400
-            
+            """Generate passkey registration options. No email required."""
             try:
                 if not self.auth_methods.get('passkey', {}).get('enabled', False):
                     return jsonify({'error': 'Passkey authentication is not enabled'}), 400
                 
-                # Get or prepare user
-                user = self.storage.get_user_by_email(email)
-                user_id = user['id'] if user else 0  # Temporary ID for new users
-                
-                options = generate_passkey_registration_options(email, user_id)
+                # No email needed for passkey registration
+                options = generate_passkey_registration_options()
                 
                 return options, 200, {'Content-Type': 'application/json'}
                 
             except Exception as e:
                 current_app.logger.error(f"Error generating passkey registration options: {str(e)}")
                 return jsonify({'error': str(e)}), 500
-        
+                
         @self.blueprint.route('/passkey/register/verify', methods=['POST'])
         def passkey_register_verify():
             """Verify passkey registration and authenticate user."""
@@ -344,15 +335,13 @@ class Pass0:
         
         @self.blueprint.route('/passkey/login/options', methods=['POST'])
         def passkey_login_options():
-            """Generate passkey authentication options."""
-            data = request.get_json()
-            email = data.get('email')  # Optional
-            
+            """Generate passkey authentication options. No email required."""
             try:
                 if not self.auth_methods.get('passkey', {}).get('enabled', False):
                     return jsonify({'error': 'Passkey authentication is not enabled'}), 400
                 
-                options = generate_passkey_authentication_options(email, self.storage)
+                # No email needed - uses discoverable credentials
+                options = generate_passkey_authentication_options(self.storage)
                 
                 return options, 200, {'Content-Type': 'application/json'}
                 
