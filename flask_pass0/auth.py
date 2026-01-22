@@ -55,7 +55,6 @@ class Pass0:
         # Primary auth method
         app.config.setdefault('PASS0_PRIMARY_AUTH', 'magic_link')
 
-        # ADD THESE 3 LINES:
         app.config.setdefault('PASS0_RP_ID', 'localhost')
         app.config.setdefault('PASS0_RP_NAME', 'Flask-Pass0')
         app.config.setdefault('PASS0_ORIGIN', 'http://localhost:5000')

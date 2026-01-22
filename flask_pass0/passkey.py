@@ -12,8 +12,8 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
     PublicKeyCredentialDescriptor,
     AuthenticatorTransport,
-    AuthenticatorAttachment,      # ADD THIS
-    ResidentKeyRequirement,        # ADD THIS
+    AuthenticatorAttachment,    
+    ResidentKeyRequirement,        
 )
 
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
@@ -59,7 +59,6 @@ def generate_passkey_registration_options():
     )
     
     return options_to_json(options)
-
 
 def verify_passkey_registration(credential_response, storage):
     """

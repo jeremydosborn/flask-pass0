@@ -328,7 +328,7 @@ async function armConditionalUI() {
 
     const serverMsg = result.error || "Authentication failed";
     const friendly = isLikelyInactivePasskeyError(serverMsg)
-      ? "This passkey is no longer active for this app (it may have been rotated/cleaned up). Please create a new passkey."
+      ? "This passkey is no longer active for this app (it may have been rotated/revoked). Please create a new passkey and consider deleting the passkey from your local device."
       : serverMsg;
 
     showMessage(friendly, "error");

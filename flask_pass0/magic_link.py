@@ -50,7 +50,7 @@ def generate_magic_link(email, next_url=None, storage=None):
     link = url_for('pass0.verify', token=token, _external=True)
     
     # Send the email if not in development mode
-    if not current_app.config.get('PASS0_DEV_MODE', False):  # FIXED: Safe default
+    if not current_app.config.get('PASS0_DEV_MODE', False):
         send_magic_link_email(email, link)
     else:
         # DEV MODE: log the link instead of sending email

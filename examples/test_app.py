@@ -165,8 +165,6 @@ def has_passkeys():
     # For discoverable credentials, we can't know per-user until they authenticate
     # So we check if ANY passkeys exist at all
     try:
-        # This is a rough check - you may want to implement this in your storage
-        # For now, we'll return based on whether the passkey table has any rows
         all_passkeys = db.session.execute(
             db.text("SELECT COUNT(*) FROM passkey_credentials")
         ).scalar()
