@@ -31,11 +31,11 @@ class Pass0:
                 'description': 'Receive a secure login link via email'
             },
             'passkey': {  
-            'enabled': True,
-            'name': 'Passkey',
-            'description': 'Use biometrics or security key'
-        },
-    }
+                'enabled': True,
+                'name': 'Passkey',
+                'description': 'Use biometrics or security key'
+            },
+        }
         
         if app is not None:
             self.init_app(app)
@@ -90,10 +90,47 @@ class Pass0:
         """Remove temporary authentication session keys after full login."""
         temp_keys = [
             '2fa_pending',
+            '2fa_setup_required',
         ]
         
         for key in temp_keys:
             session.pop(key, None)
+
+    def _on_fully_authenticated(self, user_id):
+        credential_id = session.pop('passkey_credential_id', None)
+        if current_app.config.get('PASS0_PASSKEY_CLEANUP_STALE') and credential_id:
+            self._cleanup_stale_passkeys(user_id, credential_id)
+
+    def _cleanup_stale_passkeys(self, user_id, current_credential_id):
+        """Remove passkeys older than retention period based on created_at (age-based rotation)."""
+
+        max_age = current_app.config.get('PASS0_PASSKEY_MAX_AGE_DAYS', 90)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age)
+
+        passkeys = self.storage.get_passkey_credentials(user_id) or []
+
+        for pk in passkeys:
+            # Don't delete the passkey that was just used to authenticate
+            if pk.get('credential_id') == current_credential_id:
+                continue
+
+            created = pk.get('created_at')
+            if not created:
+                continue
+
+            try:
+                # InMemory adapter stores isoformat strings; SQLAlchemy returns datetime objects
+                created_dt = datetime.fromisoformat(created) if isinstance(created, str) else created
+
+                # Make timezone-aware if naive
+                if created_dt.tzinfo is None:
+                    created_dt = created_dt.replace(tzinfo=timezone.utc)
+
+                if created_dt < cutoff:
+                    self.storage.delete_passkey_credential(pk['id'])
+            except (ValueError, TypeError):
+                # If parsing fails, skip rather than deleting unpredictably
+                continue
 
     def register_auth_method(self, method_id, config):
         """Register a new authentication method."""
@@ -165,6 +202,7 @@ class Pass0:
         # Check if 2FA is required but not enabled
         if current_app.config.get('PASS0_2FA_REQUIRED') and self.two_factor:
             if not has_2fa:
+                session['2fa_setup_required'] = True
                 return {
                     'allow': False,
                     'redirect': 'pass0.setup_2fa',
@@ -262,7 +300,8 @@ class Pass0:
             
             # Fully authenticated
             session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
-            self._cleanup_temp_session_keys() 
+            self._cleanup_temp_session_keys()
+            self._on_fully_authenticated(user_id)
             
             # Safe redirect target resolution: no request.args['next'], internal paths only
             raw_next = result.get('next_url') or session.pop('next', None)
@@ -306,6 +345,7 @@ class Pass0:
                 
                 # Set session
                 session['user_id'] = user['id']
+                session['passkey_credential_id'] = credential.get('id')
                 
                 # Check 2FA
                 check_result = self._check_2fa(user)
@@ -320,6 +360,7 @@ class Pass0:
                 # No 2FA - complete login
                 session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
                 self._cleanup_temp_session_keys()
+                self._on_fully_authenticated(user['id'])
                 
                 return jsonify({
                     'success': True,
@@ -368,6 +409,7 @@ class Pass0:
                 
                 # Set session
                 session['user_id'] = user['id']
+                session['passkey_credential_id'] = credential.get('id')
                 
                 # Check 2FA
                 check_result = self._check_2fa(user)
@@ -382,6 +424,7 @@ class Pass0:
                 # No 2FA - complete login
                 session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
                 self._cleanup_temp_session_keys()
+                self._on_fully_authenticated(user['id'])
                 
                 return jsonify({
                     'success': True,
@@ -463,7 +506,7 @@ class Pass0:
             if not self.two_factor:
                 return jsonify({'error': '2FA not enabled'}), 400
             
-            if not self.is_authenticated():
+            if not self.is_authenticated() and not session.get('2fa_setup_required'):
                 return redirect(url_for('pass0.login'))
             
             user_id = session.get('user_id')
@@ -499,8 +542,8 @@ class Pass0:
             
             if not session.get('logged_in_at'):
                 session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
-
-            self._cleanup_temp_session_keys() 
+                self._cleanup_temp_session_keys() 
+                self._on_fully_authenticated(user_id)
             
             return jsonify({
                 'success': True,
@@ -544,7 +587,8 @@ class Pass0:
                 return jsonify({'error': 'Invalid code'}), 400
             
             session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
-            self._cleanup_temp_session_keys() 
+            self._cleanup_temp_session_keys()
+            self._on_fully_authenticated(user_id)
             
             return jsonify({'success': True, 'message': '2FA verification successful'})
         

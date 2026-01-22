@@ -119,7 +119,6 @@ def verify_passkey_registration(credential_response, storage):
         current_app.logger.error(f"Passkey registration verification failed: {str(e)}")
         return {'success': False, 'error': str(e)}
 
-
 def generate_passkey_authentication_options(storage):
     """
     Generate WebAuthn authentication options.
