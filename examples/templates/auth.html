@@ -1,372 +1,274 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Login</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, system-ui, sans-serif;
-            background: #f5f5f5;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 400px;
-        }
-        h1 {
-            margin-bottom: 30px;
-            font-size: 24px;
-            font-weight: 600;
-        }
-        input {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
-            margin-bottom: 16px;
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        .info {
-            margin-top: 16px;
-            padding: 12px;
-            background: #d1ecf1;
-            border: 1px solid #bee5eb;
-            border-radius: 4px;
-            font-size: 14px;
-            color: #0c5460;
-        }
-        .error {
-            margin-top: 16px;
-            padding: 12px;
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            border-radius: 4px;
-            color: #721c24;
-            font-size: 14px;
-        }
-        .hidden { display: none; }
-        .help-text {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 16px;
-            line-height: 1.5;
-        }
-        .config-note {
-            margin-top: 24px;
-            padding: 12px;
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #6c757d;
-        }
-        .config-note code {
-            background: #e9ecef;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: monospace;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <title>Sign in</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f6f7f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .card {
+      background: white;
+      padding: 32px;
+      width: 100%;
+      max-width: 420px;
+      border-radius: 8px;
+      box-shadow: 0 8px 20px rgba(0,0,0,.08);
+    }
+
+    h1 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    p {
+      color: #555;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+
+    .primary {
+      background: #2563eb;
+      color: white;
+    }
+
+    .secondary {
+      background: #6c757d;
+      color: white;
+      margin-top: 12px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .msg {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #7f1d1d;
+    }
+
+    .info {
+      background: #e0f2fe;
+      color: #075985;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Login</h1>
 
-        {% if primary_auth == 'passkey' %}
-        <!-- Passkey Primary Auth -->
-        <p class="help-text">Sign in using Touch ID, Face ID, Windows Hello, or a security key.</p>
-        <input type="email" id="email" placeholder="Email (optional for returning users)">
-        <button onclick="passkeyAuth()" id="passkey-btn">Sign In with Passkey</button>
-        
-        <div class="config-note">
-            <strong>Primary authentication:</strong> Passkey<br>
-            To use magic link instead, set <code>PASS0_PRIMARY_AUTH = 'magic_link'</code> in your configuration.
-        </div>
+<div class="card">
+  <h1>Sign in</h1>
 
-        {% else %}
-        <!-- Magic Link Primary Auth -->
-        <form id="form">
-            <input type="email" id="email" placeholder="Enter your email" required autofocus>
-            <button type="submit" id="magic-btn">Send Login Link</button>
-        </form>
-        
-        <div class="config-note">
-            <strong>Primary authentication:</strong> Magic Link<br>
-            To use passkey instead, set <code>PASS0_PRIMARY_AUTH = 'passkey'</code> in your configuration.
-        </div>
-        {% endif %}
+  <p id="intro">
+    Sign in with a passkey
+  </p>
 
-        <div id="message" class="hidden"></div>
-    </div>
+  <!-- Autocomplete input for conditional UI -->
+  <input type="text" id="username" autocomplete="username webauthn" placeholder="Choose a passkey...">
 
-    <script>
-        function showMessage(text, type) {
-            const msg = document.getElementById('message');
-            msg.className = type;
-            msg.textContent = text;
-            msg.classList.remove('hidden');
-        }
+  <button id="registerBtn" class="secondary">
+    Create new passkey
+  </button>
 
-        function showInfo(html) {
-            const msg = document.getElementById('message');
-            msg.className = 'info';
-            msg.innerHTML = html;
-            msg.classList.remove('hidden');
-        }
+  <div id="msg" class="msg hidden"></div>
+</div>
 
-        {% if primary_auth == 'magic_link' %}
-        // Magic Link JavaScript
-        const form = document.getElementById('form');
-        const magicBtn = document.getElementById('magic-btn');
+<script>
+/* ---------------- helpers ---------------- */
 
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('email').value;
+function showMessage(text, type = "info") {
+  const el = document.getElementById("msg");
+  el.textContent = text;
+  el.className = `msg ${type}`;
+  el.classList.remove("hidden");
+}
 
-            magicBtn.disabled = true;
-            magicBtn.textContent = 'Sending...';
-            document.getElementById('message').classList.add('hidden');
+function hideMessage() {
+  document.getElementById("msg").classList.add("hidden");
+}
 
-            try {
-                const res = await fetch('/auth/request-magic-link', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
+/* base64url helpers */
+function b64urlToBuf(v) {
+  const pad = "=".repeat((4 - v.length % 4) % 4);
+  const b64 = (v + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
 
-                const data = await res.json();
+function bufToB64url(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
 
-                if (data.success) {
-                    if (data.link) {
-                        showInfo(`Dev mode: <a href="${data.link}">Click here to login</a>`);
-                    } else {
-                        showMessage('Check your email for the login link.', 'info');
-                    }
-                } else {
-                    showMessage(data.error || 'Something went wrong', 'error');
-                }
-            } catch (err) {
-                console.error('Magic link error:', err);
-                showMessage('Network error. Please try again.', 'error');
-            }
+/* ---------------- REGISTRATION ---------------- */
 
-            magicBtn.disabled = false;
-            magicBtn.textContent = 'Send Login Link';
-        };
+async function registerPasskey() {
+  hideMessage();
+  showMessage("Creating passkey...", "info");
 
-        {% else %}
-        // Passkey JavaScript
-        function base64urlToBuffer(base64url) {
-            const padding = '='.repeat((4 - base64url.length % 4) % 4);
-            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/') + padding;
-            const binary = atob(base64);
-            const buffer = new ArrayBuffer(binary.length);
-            const bytes = new Uint8Array(buffer);
-            for (let i = 0; i < binary.length; i++) {
-                bytes[i] = binary.charCodeAt(i);
-            }
-            return buffer;
-        }
+  try {
+    const res = await fetch("/auth/passkey/register/options", { 
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    const opts = await res.json();
 
-        function bufferToBase64url(buffer) {
-            const bytes = new Uint8Array(buffer);
-            let binary = '';
-            for (let i = 0; i < bytes.length; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-        }
+    opts.challenge = b64urlToBuf(opts.challenge);
+    opts.user.id = b64urlToBuf(opts.user.id);
 
-        async function passkeyAuth() {
-            const email = document.getElementById('email').value || null;
-            const btn = document.getElementById('passkey-btn');
-            
-            if (!email) {
-                showMessage('Please enter your email', 'error');
-                return;
-            }
-            
-            btn.disabled = true;
-            btn.textContent = 'Authenticating...';
-            document.getElementById('message').classList.add('hidden');
+    // FORCE platform authenticator - no QR code EVER
+    opts.authenticatorSelection = {
+      authenticatorAttachment: 'platform',
+      requireResidentKey: true,
+      residentKey: 'required',
+      userVerification: 'required'
+    };
 
-            try {
-                // Check if user has existing passkeys WITHOUT prompting
-                const checkRes = await fetch('/auth/passkey/login/options', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-                
-                const checkData = await checkRes.json();
-                
-                // If no credentials exist, register new passkey
-                if (!checkData.allowCredentials || checkData.allowCredentials.length === 0) {
-                    console.log('No existing passkey, registering new user');
-                    const registerResult = await attemptPasskeyRegistration(email);
-                    
-                    if (registerResult.success) {
-                        showInfo('Passkey registered successfully!');
-                        setTimeout(() => window.location.href = '/', 500);
-                        return;
-                    }
-                    // Check if requires 2FA after registration
-                    if (registerResult.requires_2fa) {
-                        window.location.href = registerResult.redirect || '/auth/2fa/verify';
-                        return;
-                    }
-                } else {
-                    // Credentials exist, attempt login
-                    console.log('Existing passkey found, attempting login');
-                    const loginResult = await attemptPasskeyLogin(email);
-                    
-                    if (loginResult.success) {
-                        showInfo('Signed in successfully!');
-                        setTimeout(() => window.location.href = '/', 500);
-                        return;
-                    }
-                    // **FIX: Check if requires 2FA**
-                    if (loginResult.requires_2fa) {
-                        window.location.href = loginResult.redirect || '/auth/2fa/verify';
-                        return;
-                    }
-                }
+    // Force specific algorithms
+    opts.pubKeyCredParams = [
+      { type: 'public-key', alg: -7 },
+      { type: 'public-key', alg: -257 }
+    ];
 
-                throw new Error('Authentication failed');
+    const cred = await navigator.credentials.create({
+      publicKey: opts
+    });
 
-            } catch (err) {
-                console.error('Passkey error:', err);
-                if (err.name === 'NotAllowedError') {
-                    showMessage('Authentication cancelled', 'error');
-                } else {
-                    showMessage(err.message || 'Authentication failed', 'error');
-                }
-            }
+    const payload = {
+      id: cred.id,
+      rawId: bufToB64url(cred.rawId),
+      type: cred.type,
+      response: {
+        clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+        attestationObject: bufToB64url(cred.response.attestationObject)
+      }
+    };
 
-            btn.disabled = false;
-            btn.textContent = 'Sign In with Passkey';
-        }
+    const verify = await fetch("/auth/passkey/register/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: payload })
+    });
 
-        async function attemptPasskeyLogin(email) {
-            const optionsRes = await fetch('/auth/passkey/login/options', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
-            });
+    const result = await verify.json();
 
-            const options = await optionsRes.json();
-            if (options.error) return { success: false };
+    if (!result.success) {
+      throw new Error(result.error || "Registration failed");
+    }
 
-            options.challenge = base64urlToBuffer(options.challenge);
-            if (options.allowCredentials) {
-                options.allowCredentials = options.allowCredentials.map(cred => ({
-                    ...cred,
-                    id: base64urlToBuffer(cred.id)
-                }));
-            }
+    showMessage("Passkey created. Signed in.");
+    setTimeout(() => window.location = "/", 800);
 
-            // Prefer platform authenticators (Touch ID, Face ID, Windows Hello)
-            options.authenticatorSelection = options.authenticatorSelection || {};
-            options.authenticatorSelection.authenticatorAttachment = 'platform';
-            options.authenticatorSelection.userVerification = 'preferred';
+  } catch (err) {
+    if (err.name === "NotAllowedError") {
+      showMessage("Passkey creation cancelled", "error");
+    } else {
+      showMessage(err.message || "Could not create passkey", "error");
+    }
+  }
+}
 
-            const credential = await navigator.credentials.get({ 
-                publicKey: options,
-                mediation: 'optional'  // Allow browser to suggest credentials
-            });
+document.getElementById("registerBtn").onclick = () => registerPasskey();
 
-            const credentialJSON = {
-                id: credential.id,
-                rawId: bufferToBase64url(credential.rawId),
-                response: {
-                    clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
-                    authenticatorData: bufferToBase64url(credential.response.authenticatorData),
-                    signature: bufferToBase64url(credential.response.signature),
-                    userHandle: credential.response.userHandle ? 
-                        bufferToBase64url(credential.response.userHandle) : null,
-                },
-                type: credential.type,
-            };
+/* ---------------- CONDITIONAL UI LOGIN ---------------- */
 
-            const verifyRes = await fetch('/auth/passkey/login/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ credential: credentialJSON })
-            });
+async function setupConditionalUI() {
+  try {
+    // Check if conditional UI is supported
+    const available = await PublicKeyCredential.isConditionalMediationAvailable();
+    
+    if (!available) {
+      // Fallback to button-based login
+      console.log("Conditional UI not supported");
+      return;
+    }
 
-            return await verifyRes.json();
-        }
+    const res = await fetch("/auth/passkey/login/options", { method: "POST" });
+    const opts = await res.json();
 
-        async function attemptPasskeyRegistration(email) {
-            const optionsRes = await fetch('/auth/passkey/register/options', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
-            });
+    opts.challenge = b64urlToBuf(opts.challenge);
 
-            const options = await optionsRes.json();
-            if (options.error) throw new Error(options.error);
+    // Start conditional UI - this populates the autocomplete dropdown
+    const cred = await navigator.credentials.get({
+      publicKey: opts,
+      mediation: 'conditional'  // This shows passkeys in autocomplete, no QR!
+    });
 
-            options.challenge = base64urlToBuffer(options.challenge);
-            options.user.id = base64urlToBuffer(options.user.id);
+    const payload = {
+      id: cred.id,
+      rawId: bufToB64url(cred.rawId),
+      type: cred.type,
+      response: {
+        clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+        authenticatorData: bufToB64url(cred.response.authenticatorData),
+        signature: bufToB64url(cred.response.signature),
+        userHandle: cred.response.userHandle
+          ? bufToB64url(cred.response.userHandle)
+          : null
+      }
+    };
 
-            // CRITICAL: Prefer platform authenticators (biometrics) over cross-platform (security keys)
-            options.authenticatorSelection = {
-                authenticatorAttachment: 'platform',  // Force Touch ID/Face ID/Windows Hello
-                requireResidentKey: true,
-                residentKey: 'required',
-                userVerification: 'required'
-            };
+    const verify = await fetch("/auth/passkey/login/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: payload })
+    });
 
-            // Prefer common algorithms, starting with ES256 (most compatible)
-            options.pubKeyCredParams = [
-                { type: 'public-key', alg: -7 },   // ES256 (ECDSA with SHA-256)
-                { type: 'public-key', alg: -257 }, // RS256 (RSASSA-PKCS1-v1_5 with SHA-256)
-            ];
+    const result = await verify.json();
 
-            const credential = await navigator.credentials.create({ publicKey: options });
+    if (result.success) {
+      showMessage("Signed in. Redirecting…");
+      setTimeout(() => window.location = "/", 800);
+    }
 
-            const credentialJSON = {
-                id: credential.id,
-                rawId: bufferToBase64url(credential.rawId),
-                response: {
-                    clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
-                    attestationObject: bufferToBase64url(credential.response.attestationObject),
-                },
-                type: credential.type,
-                transports: credential.response.getTransports ? credential.response.getTransports() : ['internal']
-            };
+  } catch (err) {
+    console.log("Conditional UI error:", err);
+  }
+}
 
-            const verifyRes = await fetch('/auth/passkey/register/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ credential: credentialJSON })
-            });
+// Start conditional UI on page load
+setupConditionalUI();
+</script>
 
-            return await verifyRes.json();
-        }
-        {% endif %}
-    </script>
 </body>
 </html>

@@ -32,13 +32,14 @@ app.config['PASS0_2FA_VERIFY_ROUTE'] = 'verify_2fa_page'
 app.config['PASS0_RP_ID'] = 'localhost'
 app.config['PASS0_RP_NAME'] = 'Flask-Pass0 Demo'
 app.config['PASS0_ORIGIN'] = 'http://localhost:5000'
+app.config['PASS0_PASSKEY_ATTACHMENT'] = 'platform'  # Add this - forces platform authenticators only
 
 db = SQLAlchemy(app)
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # ADD THIS LINE
+    email = db.Column(db.String(255), unique=True, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {"id": self.id, "email": self.email}
@@ -99,6 +100,10 @@ def index():
     """Dashboard - requires authentication"""
     user = get_current_user()
     
+    # Check if user exists
+    if not user:
+        return redirect('/login')
+    
     # Check 2FA status
     twofa_enabled = False
     if hasattr(pass0, 'two_factor') and pass0.two_factor:
@@ -111,10 +116,16 @@ def index():
         'magic_link': 'Magic Link (email)'
     }
     secondary_auth = 'magic_link' if primary_auth == 'passkey' else 'passkey'
+    
+    # Handle passkey-only users (no email)
+    display_name = user.get('email') or f"User #{user['id']}"
+    user_display = dict(user)
+    user_display['display_name'] = display_name
+    user_display['email'] = user.get('email') or 'N/A (Passkey-only)'
 
     return render_template(
         'dashboard.html',
-        user=user,
+        user=user_display,
         twofa_enabled=twofa_enabled,
         primary_method=auth_methods[primary_auth],
         secondary_method=auth_methods[secondary_auth]
@@ -146,25 +157,32 @@ def public():
     """Public page accessible without login"""
     return '<h1>Public Page</h1><p><a href="/login">Login</a> | <a href="/">Dashboard</a></p>'
 
+@app.route('/api/has-passkeys', methods=['POST'])
+def has_passkeys():
+    """Check if ANY passkeys exist in the system (for initial login flow)"""
+    # For discoverable credentials, we can't know per-user until they authenticate
+    # So we check if ANY passkeys exist at all
+    try:
+        # This is a rough check - you may want to implement this in your storage
+        # For now, we'll return based on whether the passkey table has any rows
+        all_passkeys = db.session.execute(
+            db.text("SELECT COUNT(*) FROM passkey_credentials")
+        ).scalar()
+        
+        return jsonify({'has_passkeys': all_passkeys > 0})
+    except Exception as e:
+        return jsonify({'has_passkeys': False})
+
 # ============================================================================
 # 2FA Routes
 # ============================================================================
 
-@app.route('/2fa-verify', methods=['GET'])  # Different URL
+@app.route('/2fa-verify', methods=['GET'])
 def verify_2fa_page():
     """2FA verification page"""
     if not session.get('2fa_pending'):
         return redirect('/login')
     return render_template('2fa_verify.html')
-
-@app.route('/auth/2fa/disable', methods=['POST'])
-@login_required
-def disable_2fa():
-    """Disable 2FA"""
-    user = get_current_user()
-    pass0.two_factor.disable_2fa(user['id'])
-    log_event('2fa_disabled', '2FA disabled', user_id=user['id'])
-    return jsonify({'success': True})
 
 # ============================================================================
 # Security Logs API
@@ -334,14 +352,15 @@ def log_auth_events(response):
             if 'user_id' in session:
                 user = get_current_user()
                 if user:
+                    email = user.get('email') or 'N/A'
                     log_event('step_7_token_verified', 'Token hash matched in database',
-                             user_id=user['id'], email=user['email'])
+                             user_id=user['id'], email=email)
                     log_event('step_8_user_authenticated', 'User identity verified',
-                             user_id=user['id'], email=user['email'])
+                             user_id=user['id'], email=email)
                     log_event('step_9_session_created', 'Secure session established',
                              user_id=user['id'])
                     log_event('login_success', '✓ LOGIN SUCCESSFUL - User authenticated via magic link',
-                             user_id=user['id'], email=user['email'],
+                             user_id=user['id'], email=email,
                              ip_address=request.remote_addr)
             else:
                 # Token verification failed
@@ -403,16 +422,6 @@ def log_auth_events(response):
                              ip_address=request.remote_addr)
             except Exception as e:
                 print(f"Error logging 2FA verification: {e}")
-
-                
-    
-    # 2FA disable
-    if request.endpoint == 'pass0.disable_2fa' and request.method == 'POST':
-        if response.status_code == 200:
-            user = get_current_user()
-            if user:
-                log_event('2fa_disabled', '2FA DISABLED by user - secret and backup codes deleted',
-                         user_id=user['id'], ip_address=request.remote_addr)
     
     # Backup codes regeneration
     if request.endpoint == 'pass0.backup_codes' and request.method == 'POST':

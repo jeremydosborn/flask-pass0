@@ -370,11 +370,10 @@
         
         async function addNewPasskey() {
             try {
-                // Get registration options from server
                 const optionsRes = await fetch('/auth/passkey/register/options', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: '{{ user.email }}' })
+                    body: JSON.stringify({})
                 });
                 
                 const options = await optionsRes.json();
@@ -383,7 +382,6 @@
                     return;
                 }
                 
-                // Prepare options for WebAuthn API
                 options.challenge = base64urlToBuffer(options.challenge);
                 options.user.id = base64urlToBuffer(options.user.id);
                 
@@ -394,10 +392,8 @@
                     userVerification: 'required'
                 };
                 
-                // Prompt user with Touch ID/Face ID
                 const credential = await navigator.credentials.create({ publicKey: options });
                 
-                // Send credential to server
                 const credentialJSON = {
                     id: credential.id,
                     rawId: bufferToBase64url(credential.rawId),
@@ -481,25 +477,40 @@
         }
         
         // ==================== 2FA Functions ====================
-        
-        function setup2FA() {
-            fetch('/auth/2fa/setup')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        alert('Error: ' + data.error);
-                        return;
-                    }
-                    document.getElementById('2fa-setup').classList.remove('hidden');
-                    document.getElementById('qr-code').innerHTML = 
-                        `<img src="${data.qr_code}" alt="QR Code">`;
-                    document.getElementById('secret').textContent = data.secret;
-                })
-                .catch(err => {
-                    console.error('Fetch error:', err);
-                    alert('Network error: ' + err.message);
-                });
+
+        function disable2FA() {
+          if (!confirm("Disable 2FA?")) return;
+
+          fetch("/auth/2fa/disable", { method: "POST" })
+            .then(async (r) => {
+              const data = await r.json().catch(() => ({}));
+              if (!r.ok || data.error) throw new Error(data.error || "Failed to disable 2FA");
+              alert("2FA disabled");
+              location.reload();
+            })
+            .catch((err) => {
+              console.error(err);
+              alert(err.message || "Network/server error");
+            });
         }
+                function setup2FA() {
+                    fetch('/auth/2fa/setup')
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.error) {
+                                alert('Error: ' + data.error);
+                                return;
+                            }
+                            document.getElementById('2fa-setup').classList.remove('hidden');
+                            document.getElementById('qr-code').innerHTML = 
+                                `<img src="${data.qr_code}" alt="QR Code">`;
+                            document.getElementById('secret').textContent = data.secret;
+                        })
+                        .catch(err => {
+                            console.error('Fetch error:', err);
+                            alert('Network error: ' + err.message);
+                        });
+                }
         
         function verify2FA() {
             const code = document.getElementById('verify-code').value;
@@ -533,16 +544,6 @@
         function cancel2FASetup() {
             document.getElementById('2fa-setup').classList.add('hidden');
             document.getElementById('verify-code').value = '';
-        }
-        
-        function disable2FA() {
-            if (!confirm('Disable 2FA?')) return;
-            fetch('/auth/2fa/disable', {method: 'POST'})
-                .then(r => r.json())
-                .then(() => {
-                    alert('2FA disabled');
-                    location.reload();
-                });
         }
         
         function regenerateBackupCodes() {
