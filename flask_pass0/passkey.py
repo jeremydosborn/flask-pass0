@@ -131,7 +131,7 @@ def generate_passkey_authentication_options(storage):
     options = generate_authentication_options(
         rp_id=rp_id,
         challenge=challenge,
-        allow_credentials=[],  # ✅ MUST be a sequence
+        allow_credentials=[], 
         user_verification=UserVerificationRequirement.REQUIRED,
         timeout=60000,
     )
