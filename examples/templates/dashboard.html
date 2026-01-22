@@ -101,21 +101,6 @@
             border: 2px solid #ffc107;
         }
         
-        .passkey-item {
-            background: #f8f9fa;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 4px;
-            border-left: 3px solid #007bff;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .passkey-info {
-            flex: 1;
-        }
-        
         .passkey-label {
             font-weight: 600;
             font-size: 16px;
@@ -125,10 +110,6 @@
         .passkey-meta {
             font-size: 13px;
             color: #6c757d;
-        }
-        
-        .passkey-actions button {
-            margin: 0 0 0 10px;
         }
         
         .log-entry {
@@ -259,6 +240,9 @@
                     Passkeys are stored securely on your device and synced via iCloud Keychain (Apple) or 
                     Google Password Manager (Android). They can't be phished and are more secure than passwords.
                 </p>
+                <p style="margin-top: 10px;">
+                    <strong>To delete a passkey:</strong> Go to your device's Settings → Passwords and remove it manually.
+                </p>
             </div>
         </div>
     </div>
@@ -347,15 +331,10 @@
                         'Never used';
                     
                     return `
-                        <div class="passkey-item">
-                            <div class="passkey-info">
-                                <div class="passkey-label">Passkey #${pk.id}</div>
-                                <div class="passkey-meta">
-                                    Created: ${created} | Last used: ${lastUsed}
-                                </div>
-                            </div>
-                            <div class="passkey-actions">
-                                <button onclick="revokePasskey(${pk.id})" class="danger">Revoke</button>
+                        <div style="background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 4px; border-left: 3px solid #007bff;">
+                            <div class="passkey-label">Passkey #${pk.id}</div>
+                            <div class="passkey-meta">
+                                Created: ${created} | Last used: ${lastUsed}
                             </div>
                         </div>
                     `;
@@ -427,30 +406,6 @@
                 } else {
                     alert('Error adding passkey: ' + err.message);
                 }
-            }
-        }
-        
-        async function revokePasskey(passkeyId) {
-            if (!confirm('Revoke this passkey? You won\'t be able to use it to sign in anymore.')) {
-                return;
-            }
-            
-            try {
-                const res = await fetch(`/auth/passkeys/${passkeyId}`, {
-                    method: 'DELETE'
-                });
-                
-                const data = await res.json();
-                
-                if (data.success) {
-                    alert('Passkey revoked successfully');
-                    loadPasskeys();
-                } else {
-                    alert('Error: ' + (data.error || 'Failed to revoke passkey'));
-                }
-            } catch (err) {
-                console.error('Error revoking passkey:', err);
-                alert('Error revoking passkey: ' + err.message);
             }
         }
         

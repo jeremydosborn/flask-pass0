@@ -32,7 +32,9 @@ app.config['PASS0_2FA_VERIFY_ROUTE'] = 'verify_2fa_page'
 app.config['PASS0_RP_ID'] = 'localhost'
 app.config['PASS0_RP_NAME'] = 'Flask-Pass0 Demo'
 app.config['PASS0_ORIGIN'] = 'http://localhost:5000'
-app.config['PASS0_PASSKEY_ATTACHMENT'] = 'platform'  # Add this - forces platform authenticators only
+app.config['PASS0_PASSKEY_ATTACHMENT'] = 'platform'
+app.config['PASS0_PASSKEY_CLEANUP_STALE'] = True
+app.config['PASS0_PASSKEY_MAX_AGE_DAYS'] = 0
 
 db = SQLAlchemy(app)
 
