@@ -40,7 +40,6 @@ class Pass0:
         if app is not None:
             self.init_app(app)
         else:
-            # Register routes even if app is None (will be called again in init_app)
             self._register_routes()
     
     def init_app(self, app):
@@ -242,6 +241,10 @@ class Pass0:
 
     def _register_routes(self):
         """Register authentication routes on the blueprint."""
+
+        if getattr(self, '_routes_registered', False):
+            return
+        self._routes_registered = True
         
         @self.blueprint.route('/login')
         def login():
