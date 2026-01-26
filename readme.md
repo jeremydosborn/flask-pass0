@@ -4,7 +4,7 @@ Passwordless authentication for Flask with passkeys (WebAuthn), magic links, and
 
 **WIP: API may change**
 
-**Experimenting with identity-less/graduated auth, results may vary in near-term**
+**Experimenting with identity-less/graduated auth primitives, results may vary in near-term**
 
 ## Design
 
