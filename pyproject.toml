@@ -4,18 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flask-pass0"
-version = "0.5.0"
-description = "Passwordless authentication for Flask with passkeys (WebAuthn), magic links, and optional 2FA"
+version = "0.2.0"
+description = "Passwordless auth primitives for Flask"
 readme = "README.md"
-license = { text = "MIT OR Apache-2.0" }
+license = { text = "Apache-2.0" }
 requires-python = ">=3.8"
-
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 2 - Pre-Alpha",
     "Environment :: Web Environment",
     "Framework :: Flask",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
@@ -25,28 +23,29 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Security",
-    "Topic :: Internet :: WWW/HTTP :: Session",
 ]
-
 dependencies = [
-    "Flask>=2.0.0",
+    "Flask>=2.3.0",
     "webauthn>=2.0.0",
+    "pyotp>=2.9.0",
+    "qrcode>=7.4.0",
+    "pillow>=10.0.0",
+    "cryptography>=41.0.0",
 ]
 
 [project.optional-dependencies]
-sqlalchemy = ["Flask-SQLAlchemy>=2.5.0"]
+sqlalchemy = ["Flask-SQLAlchemy>=3.0.0"]
 email = ["Flask-Mail>=0.9.1"]
-twofa = ["pyotp>=2.8.0", "qrcode[pil]>=7.0.0"]
-all = [
-    "Flask-SQLAlchemy>=2.5.0",
-    "Flask-Mail>=0.9.1",
-    "pyotp>=2.8.0",
-    "qrcode[pil]>=7.0.0",
+dev = [
+    "pytest>=7.4.0",
+    "pytest-flask>=1.2.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.1",
 ]
 
 [project.urls]
 Homepage = "https://github.com/jeremydosborn/flask-pass0"
-"Bug Tracker" = "https://github.com/jeremydosborn/flask-pass0/issues"
+Issues = "https://github.com/jeremydosborn/flask-pass0/issues"
 
 [tool.setuptools]
 include-package-data = true

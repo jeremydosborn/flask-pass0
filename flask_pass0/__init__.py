@@ -1,14 +1,15 @@
-from .auth import Pass0
-from .utils import login_required, get_current_user, is_authenticated, logout
-from .two_factor import TwoFactorAuth
+from .pass0 import Pass0
+from .passkey import Passkey
+from .magic_link import MagicLink
+from .totp import TOTP
+from .storage import StorageAdapter, SQLAlchemyStorageAdapter
 
-__version__ = '0.3.0'
-
+__version__ = "0.2.0"
 __all__ = [
-    'Pass0',
-    'login_required',
-    'get_current_user',
-    'is_authenticated',
-    'logout',
-    'TwoFactorAuth',
+    "Pass0",
+    "Passkey",
+    "MagicLink",
+    "TOTP",
+    "StorageAdapter",
+    "SQLAlchemyStorageAdapter",
 ]

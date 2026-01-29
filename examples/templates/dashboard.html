@@ -2,565 +2,138 @@
 <html>
 <head>
     <title>Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, system-ui, sans-serif;
-            padding: 20px;
-            max-width: 1000px;
-            margin: 0 auto;
-            background: #f5f5f5;
-        }
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 { font-size: 24px; }
-        h2 { font-size: 20px; margin-bottom: 15px; }
-        h3 { font-size: 18px; margin: 20px 0 10px 0; }
-        a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #dee2e6;
-        }
-        .tab {
-            padding: 12px 24px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-            color: #6c757d;
-            border-bottom: 3px solid transparent;
-        }
-        .tab:hover { color: #007bff; }
-        .tab.active {
-            color: #007bff;
-            border-bottom-color: #007bff;
-            font-weight: 600;
-        }
-        
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        
-        .card {
-            background: white;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .user-info { padding: 15px; background: #f9f9f9; border-radius: 4px; }
-        button {
-            padding: 10px 20px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 5px;
-            font-size: 14px;
-        }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        button.danger { background: #dc3545; }
-        button.danger:hover { background: #c82333; }
-        button.secondary { background: #6c757d; }
-        button.secondary:hover { background: #5a6268; }
-        
-        .status {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: 600;
-        }
-        .status.enabled { background: #d4edda; color: #155724; }
-        .status.disabled { background: #f8d7da; color: #721c24; }
-        
-        #qr-code { text-align: center; margin: 20px 0; }
-        #qr-code img { max-width: 300px; border: 1px solid #ddd; padding: 10px; border-radius: 8px; }
-        
-        .backup-codes {
-            background: #fff3cd;
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 4px;
-            font-family: monospace;
-            line-height: 2;
-            border: 2px solid #ffc107;
-        }
-        
-        .passkey-label {
-            font-weight: 600;
-            font-size: 16px;
-            margin-bottom: 5px;
-        }
-        
-        .passkey-meta {
-            font-size: 13px;
-            color: #6c757d;
-        }
-        
-        .log-entry {
-            background: #f8f9fa;
-            padding: 12px;
-            margin: 8px 0;
-            border-radius: 4px;
-            border-left: 3px solid #6c757d;
-            font-size: 14px;
-        }
-        .log-entry.login_success { border-left-color: #28a745; }
-        .log-entry.magic_link_requested { border-left-color: #17a2b8; }
-        .log-entry.2fa_enabled,
-        .log-entry.2fa_verified { border-left-color: #007bff; }
-        .log-entry.2fa_failed { border-left-color: #dc3545; }
-        .log-entry.logout { border-left-color: #6c757d; }
-        
-        .log-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-        }
-        .log-type {
-            font-weight: 600;
-            font-family: monospace;
-            font-size: 12px;
-        }
-        .log-time {
-            color: #6c757d;
-            font-size: 12px;
-        }
-        .log-message {
-            margin-bottom: 5px;
-        }
-        .log-data {
-            font-family: monospace;
-            font-size: 11px;
-            color: #6c757d;
-            background: white;
-            padding: 5px;
-            border-radius: 3px;
-        }
-        
-        input {
-            padding: 10px;
-            width: 200px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        
-        .hidden { display: none; }
-        
-        code {
-            background: #f8f9fa;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: monospace;
-            font-size: 14px;
-        }
-        
-        .info-box {
-            background: #d1ecf1;
-            border: 1px solid #bee5eb;
-            color: #0c5460;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 15px 0;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #6c757d;
-        }
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; }
+        h1 { margin-bottom: 8px; }
+        .subtitle { color: #666; margin-bottom: 24px; }
+        .card { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 16px 0; }
+        .card h3 { margin: 0 0 12px 0; }
+        button { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; margin-right: 8px; }
+        .primary { background: #4285f4; color: white; }
+        .danger { background: #ea4335; color: white; }
+        .secondary { background: #e8eaed; color: #333; }
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.5; }
+        .status { padding: 12px; margin: 12px 0; border-radius: 6px; display: none; }
+        .status.show { display: block; }
+        .status.error { background: #fce8e6; color: #c5221f; }
+        .status.success { background: #e6f4ea; color: #137333; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .badge.on { background: #e6f4ea; color: #137333; }
+        .badge.off { background: #fce8e6; color: #c5221f; }
+        .backup-codes { font-family: monospace; background: #fff; padding: 12px; border-radius: 4px; margin-top: 12px; }
+        .backup-codes code { display: block; padding: 4px 0; }
+        #qr-code img { max-width: 200px; margin: 12px 0; }
+        #totp-secret { font-family: monospace; background: #fff; padding: 8px; border-radius: 4px; word-break: break-all; }
+        input[type="text"] { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; width: 150px; }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Dashboard</h1>
-        <a href="/auth/logout">Logout</a>
-    </header>
-    
-    <div class="tabs">
-        <button class="tab active" onclick="switchTab('overview')">Overview</button>
-        <button class="tab" onclick="switchTab('passkeys')">Passkeys</button>
-        <button class="tab" onclick="switchTab('security')">2FA</button>
-        <button class="tab" onclick="switchTab('logs')">Event Logs</button>
-        <button class="tab" onclick="window.location.href='/tests'">🧪 Tests</button>
-    </div>
-    
-    <div id="tab-overview" class="tab-content active">
-        <div class="card">
-            <h2>Account Info</h2>
-            <div class="user-info">
-                <p><strong>Email:</strong> {{ user.email }}</p>
-                <p><strong>User ID:</strong> {{ user.id }}</p>
-            </div>
-        </div>
+    <h1>Dashboard</h1>
+    <p class="subtitle">User #{{ user.id }}</p>
+
+    <div id="status" class="status"></div>
+
+    <div class="card">
+        <h3>Two-Factor Authentication 
+            <span class="badge {{ 'on' if has_2fa else 'off' }}">{{ 'Enabled' if has_2fa else 'Disabled' }}</span>
+        </h3>
         
-        <div class="card">
-            <h2>Current Authentication Methods</h2>
-            <div style="margin-top: 15px;">
-                <p><strong>Primary:</strong> {{ primary_method }}</p>
-                <p style="margin-top: 10px;"><strong>Also available as configuration option:</strong> {{ secondary_method }}</p>
-            </div>
+        {% if has_2fa %}
+        <button id="disable-2fa" class="danger">Disable 2FA</button>
+        {% else %}
+        <div id="setup-2fa-section">
+            <button id="setup-2fa" class="primary">Enable 2FA</button>
         </div>
+        <div id="verify-2fa-section" style="display:none;">
+            <div id="qr-code"></div>
+            <p>Secret: <span id="totp-secret"></span></p>
+            <p>Enter code from authenticator:</p>
+            <input type="text" id="totp-code" placeholder="000000" maxlength="6">
+            <button id="verify-2fa" class="primary">Verify</button>
+            <div id="backup-codes" class="backup-codes" style="display:none;"></div>
+        </div>
+        {% endif %}
     </div>
-    
-    <div id="tab-passkeys" class="tab-content">
-        <div class="card">
-            <h2>Your Passkeys</h2>
-            <p style="color: #6c757d; margin-bottom: 15px;">
-                Manage devices that can sign in with Touch ID, Face ID, or Windows Hello.
-            </p>
-            
-            <div id="passkeys-list">
-                <div class="empty-state">Loading passkeys...</div>
-            </div>
-            
-            <div style="margin-top: 20px;">
-                <button onclick="addNewPasskey()">Add New Passkey</button>
-            </div>
-            
-            <div class="info-box" style="margin-top: 20px;">
-                <strong>💡 About Passkeys</strong>
-                <p style="margin-top: 10px;">
-                    Passkeys are stored securely on your device and synced via iCloud Keychain (Apple) or 
-                    Google Password Manager (Android). They can't be phished and are more secure than passwords.
-                </p>
-                <p style="margin-top: 10px;">
-                    <strong>To delete a passkey:</strong> Go to your device's Settings → Passwords and remove it manually.
-                </p>
-            </div>
-        </div>
-    </div>
-    
-    <div id="tab-security" class="tab-content">
-        <div class="card">
-            <h2>Two-Factor Authentication</h2>
-            
-            <div id="2fa-status-container">
-                {% if twofa_enabled %}
-                    <span class="status enabled">2FA Enabled</span>
-                    <div style="margin-top: 15px;">
-                        <button onclick="disable2FA()" class="danger">Disable 2FA</button>
-                        <button onclick="regenerateBackupCodes()">Regenerate Backup Codes</button>
-                    </div>
-                {% else %}
-                    <span class="status disabled">2FA Disabled</span>
-                    <div style="margin-top: 15px;">
-                        <button onclick="setup2FA()">Enable 2FA</button>
-                    </div>
-                {% endif %}
-            </div>
-            
-            <div id="2fa-setup" class="hidden">
-                <h3>Setup 2FA</h3>
-                <p>Scan this QR code with your authenticator app</p>
-                <div id="qr-code"></div>
-                <p>Or enter manually: <code id="secret"></code></p>
-                <input type="text" id="verify-code" placeholder="Enter 6-digit code" maxlength="6">
-                <button onclick="verify2FA()">Verify & Enable</button>
-                <button onclick="cancel2FASetup()" class="secondary">Cancel</button>
-            </div>
-            
-            <div id="backup-codes-display"></div>
-        </div>
-    </div>
-    
-    <div id="tab-logs" class="tab-content">
-        <div class="card">
-            <h2>Security Event Logs</h2>
-            <p style="margin-bottom: 15px; color: #6c757d;">
-                Real-time log of authentication events. Sensitive data (tokens, secrets) is redacted.
-            </p>
-            
-            <div style="margin-bottom: 15px;">
-                <button onclick="loadLogs()">Refresh</button>
-                <button onclick="clearLogs()" class="danger">Clear Logs</button>
-            </div>
-            
-            <div id="logs-container">
-                <div class="empty-state">Loading logs...</div>
-            </div>
-        </div>
+
+    <div class="card">
+        <h3>Session</h3>
+        <a href="/logout"><button class="secondary">Logout</button></a>
     </div>
 
     <script>
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
-            
-            document.getElementById('tab-' + tabName).classList.add('active');
-            event.target.classList.add('active');
-            
-            if (tabName === 'logs') loadLogs();
-            if (tabName === 'passkeys') loadPasskeys();
+        const status = document.getElementById('status');
+        
+        function showStatus(msg, isError = false) {
+            status.textContent = msg;
+            status.className = 'status show ' + (isError ? 'error' : 'success');
+            setTimeout(() => status.className = 'status', 3000);
         }
-        
-        // ==================== Passkeys Functions ====================
-        
-        async function loadPasskeys() {
+
+        {% if not has_2fa %}
+        const setupBtn = document.getElementById('setup-2fa');
+        const setupSection = document.getElementById('setup-2fa-section');
+        const verifySection = document.getElementById('verify-2fa-section');
+        const verifyBtn = document.getElementById('verify-2fa');
+        const codeInput = document.getElementById('totp-code');
+        const backupCodesDiv = document.getElementById('backup-codes');
+
+        setupBtn.onclick = async () => {
+            setupBtn.disabled = true;
             try {
-                const res = await fetch('/auth/passkeys');
+                const res = await fetch('/auth/2fa/setup');
                 const data = await res.json();
-                
-                const container = document.getElementById('passkeys-list');
-                
-                if (!data.passkeys || data.passkeys.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No passkeys registered yet.</div>';
-                    return;
-                }
-                
-                container.innerHTML = data.passkeys.map(pk => {
-                    const created = new Date(pk.created_at).toLocaleDateString();
-                    const lastUsed = pk.last_used_at ? 
-                        new Date(pk.last_used_at).toLocaleString() : 
-                        'Never used';
-                    
-                    return `
-                        <div style="background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 4px; border-left: 3px solid #007bff;">
-                            <div class="passkey-label">Passkey #${pk.id}</div>
-                            <div class="passkey-meta">
-                                Created: ${created} | Last used: ${lastUsed}
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-                
-            } catch (err) {
-                console.error('Error loading passkeys:', err);
-                document.getElementById('passkeys-list').innerHTML = 
-                    '<div class="empty-state" style="color: red;">Error loading passkeys</div>';
+                document.getElementById('qr-code').innerHTML = `<img src="${data.qr_code}">`;
+                document.getElementById('totp-secret').textContent = data.secret;
+                setupSection.style.display = 'none';
+                verifySection.style.display = 'block';
+            } catch (e) {
+                showStatus(e.message, true);
             }
-        }
-        
-        async function addNewPasskey() {
+            setupBtn.disabled = false;
+        };
+
+        verifyBtn.onclick = async () => {
+            verifyBtn.disabled = true;
             try {
-                const optionsRes = await fetch('/auth/passkey/register/options', {
+                const res = await fetch('/auth/2fa/setup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
+                    body: JSON.stringify({ code: codeInput.value })
                 });
-                
-                const options = await optionsRes.json();
-                if (options.error) {
-                    alert('Error: ' + options.error);
-                    return;
-                }
-                
-                options.challenge = base64urlToBuffer(options.challenge);
-                options.user.id = base64urlToBuffer(options.user.id);
-                
-                options.authenticatorSelection = {
-                    authenticatorAttachment: 'platform',
-                    requireResidentKey: true,
-                    residentKey: 'required',
-                    userVerification: 'required'
-                };
-                
-                const credential = await navigator.credentials.create({ publicKey: options });
-                
-                const credentialJSON = {
-                    id: credential.id,
-                    rawId: bufferToBase64url(credential.rawId),
-                    response: {
-                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
-                        attestationObject: bufferToBase64url(credential.response.attestationObject),
-                    },
-                    type: credential.type,
-                    transports: credential.response.getTransports ? credential.response.getTransports() : ['internal']
-                };
-                
-                const verifyRes = await fetch('/auth/passkey/register/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ credential: credentialJSON })
-                });
-                
-                const result = await verifyRes.json();
-                
-                if (result.success) {
-                    alert('New passkey added successfully!');
-                    loadPasskeys();
-                } else {
-                    alert('Failed to add passkey: ' + (result.error || 'Unknown error'));
-                }
-                
-            } catch (err) {
-                console.error('Error adding passkey:', err);
-                if (err.name === 'NotAllowedError') {
-                    alert('Passkey registration cancelled');
-                } else {
-                    alert('Error adding passkey: ' + err.message);
-                }
-            }
-        }
-        
-        // Helper functions for base64url encoding/decoding
-        function base64urlToBuffer(base64url) {
-            const padding = '='.repeat((4 - base64url.length % 4) % 4);
-            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/') + padding;
-            const binary = atob(base64);
-            const buffer = new ArrayBuffer(binary.length);
-            const bytes = new Uint8Array(buffer);
-            for (let i = 0; i < binary.length; i++) {
-                bytes[i] = binary.charCodeAt(i);
-            }
-            return buffer;
-        }
-        
-        function bufferToBase64url(buffer) {
-            const bytes = new Uint8Array(buffer);
-            let binary = '';
-            for (let i = 0; i < bytes.length; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-        }
-        
-        // ==================== 2FA Functions ====================
-
-        function disable2FA() {
-          if (!confirm("Disable 2FA?")) return;
-
-          fetch("/auth/2fa/disable", { method: "POST" })
-            .then(async (r) => {
-              const data = await r.json().catch(() => ({}));
-              if (!r.ok || data.error) throw new Error(data.error || "Failed to disable 2FA");
-              alert("2FA disabled");
-              location.reload();
-            })
-            .catch((err) => {
-              console.error(err);
-              alert(err.message || "Network/server error");
-            });
-        }
-                function setup2FA() {
-                    fetch('/auth/2fa/setup')
-                        .then(r => r.json())
-                        .then(data => {
-                            if (data.error) {
-                                alert('Error: ' + data.error);
-                                return;
-                            }
-                            document.getElementById('2fa-setup').classList.remove('hidden');
-                            document.getElementById('qr-code').innerHTML = 
-                                `<img src="${data.qr_code}" alt="QR Code">`;
-                            document.getElementById('secret').textContent = data.secret;
-                        })
-                        .catch(err => {
-                            console.error('Fetch error:', err);
-                            alert('Network error: ' + err.message);
-                        });
-                }
-        
-        function verify2FA() {
-            const code = document.getElementById('verify-code').value;
-            
-            fetch('/auth/2fa/setup', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({code})
-            })
-            .then(r => r.json())
-            .then(data => {
+                const data = await res.json();
                 if (data.success) {
-                    alert('2FA enabled!');
-                    
-                    const codesHTML = data.backup_codes.map(c => `<div>${c}</div>`).join('');
-                    document.getElementById('backup-codes-display').innerHTML = `
-                        <div class="backup-codes">
-                            <strong>Save these backup codes!</strong>
-                            <p>Use if you lose your authenticator.</p>
-                            ${codesHTML}
-                        </div>
-                    `;
-                    
-                    setTimeout(() => location.reload(), 10000);
+                    showStatus('2FA enabled!');
+                    backupCodesDiv.style.display = 'block';
+                    backupCodesDiv.innerHTML = '<strong>Backup codes (save these!):</strong>' + 
+                        data.backup_codes.map(c => `<code>${c}</code>`).join('');
+                    verifyBtn.style.display = 'none';
+                    codeInput.style.display = 'none';
                 } else {
-                    alert('Error: ' + data.error);
+                    showStatus(data.error || 'Invalid code', true);
                 }
-            });
-        }
-        
-        function cancel2FASetup() {
-            document.getElementById('2fa-setup').classList.add('hidden');
-            document.getElementById('verify-code').value = '';
-        }
-        
-        function regenerateBackupCodes() {
-            if (!confirm('Regenerate codes? Old codes will stop working.')) return;
-            fetch('/auth/2fa/backup-codes', {method: 'POST'})
-                .then(r => r.json())
-                .then(data => {
-                    const codesHTML = data.backup_codes.map(c => `<div>${c}</div>`).join('');
-                    document.getElementById('backup-codes-display').innerHTML = `
-                        <div class="backup-codes">
-                            <strong>New backup codes!</strong>
-                            <p>Save these - old codes no longer work.</p>
-                            ${codesHTML}
-                        </div>
-                    `;
-                });
-        }
-        
-        // ==================== Logs Functions ====================
-        
-        function loadLogs() {
-            fetch('/api/security-logs')
-                .then(r => r.json())
-                .then(data => {
-                    const div = document.getElementById('logs-container');
-                    if (data.events.length === 0) {
-                        div.innerHTML = '<div class="empty-state">No events yet.</div>';
-                        return;
-                    }
-                    div.innerHTML = data.events.map(e => {
-                        const time = new Date(e.timestamp).toLocaleString();
-                        const dataStr = Object.entries(e.data).map(([k, v]) => `${k}: ${v}`).join(', ');
-                        return `
-                            <div class="log-entry ${e.type}">
-                                <div class="log-header">
-                                    <span class="log-type">${e.type}</span>
-                                    <span class="log-time">${time}</span>
-                                </div>
-                                <div class="log-message">${e.message}</div>
-                                ${dataStr ? `<div class="log-data">${dataStr}</div>` : ''}
-                            </div>
-                        `;
-                    }).join('');
-                })
-                .catch(err => {
-                    console.error('Logs fetch error:', err);
-                    document.getElementById('logs-container').innerHTML = 
-                        '<div class="empty-state" style="color: red;">Error loading logs</div>';
-                });
-        }
-        
-        function clearLogs() {
-            if (!confirm('Clear all logs?')) return;
-            fetch('/api/security-logs/clear', {method: 'POST'})
-                .then(() => {
-                    alert('Cleared');
-                    loadLogs();
-                });
-        }
-        
-        // Load initial data
-        loadLogs();
+            } catch (e) {
+                showStatus(e.message, true);
+            }
+            verifyBtn.disabled = false;
+        };
+        {% endif %}
+
+        {% if has_2fa %}
+        document.getElementById('disable-2fa').onclick = async () => {
+            if (!confirm('Disable 2FA?')) return;
+            try {
+                const res = await fetch('/auth/2fa/disable', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                showStatus(e.message, true);
+            }
+        };
+        {% endif %}
     </script>
 </body>
 </html>

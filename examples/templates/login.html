@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; max-width: 400px; margin: 80px auto; padding: 20px; }
+        h1 { margin-bottom: 24px; }
+        button { width: 100%; padding: 12px; margin: 8px 0; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; }
+        .primary { background: #4285f4; color: white; }
+        .secondary { background: #f1f3f4; color: #333; }
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status { padding: 12px; margin: 16px 0; border-radius: 6px; display: none; }
+        .status.error { display: block; background: #fce8e6; color: #c5221f; }
+        .status.success { display: block; background: #e6f4ea; color: #137333; }
+        .divider { text-align: center; margin: 24px 0; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Pass0 Demo</h1>
+    
+    <div id="status" class="status"></div>
+    
+    <div id="passkey-section">
+        <button id="login-passkey" class="primary" style="display:none;">Sign in with Passkey</button>
+        <button id="register-passkey" class="secondary">Create Account with Passkey</button>
+    </div>
+
+    <script>
+        const status = document.getElementById('status');
+        const loginBtn = document.getElementById('login-passkey');
+        const registerBtn = document.getElementById('register-passkey');
+
+        function showStatus(msg, isError = false) {
+            status.textContent = msg;
+            status.className = 'status ' + (isError ? 'error' : 'success');
+        }
+
+        function base64urlToBuffer(base64url) {
+            const padding = '='.repeat((4 - base64url.length % 4) % 4);
+            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/') + padding;
+            const binary = atob(base64);
+            return Uint8Array.from(binary, c => c.charCodeAt(0)).buffer;
+        }
+
+        function bufferToBase64url(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            bytes.forEach(b => binary += String.fromCharCode(b));
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        async function checkPasskeys() {
+            try {
+                const res = await fetch('/auth/passkey/login/options', { method: 'POST' });
+                if (res.ok) loginBtn.style.display = 'block';
+            } catch (e) {}
+        }
+
+        registerBtn.onclick = async () => {
+            registerBtn.disabled = true;
+            try {
+                const optRes = await fetch('/auth/passkey/register/options', { method: 'POST' });
+                const options = await optRes.json();
+                
+                options.challenge = base64urlToBuffer(options.challenge);
+                options.user.id = base64urlToBuffer(options.user.id);
+
+                const credential = await navigator.credentials.create({ publicKey: options });
+                
+                const credentialJSON = {
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                        attestationObject: bufferToBase64url(credential.response.attestationObject),
+                    },
+                    transports: credential.response.getTransports?.() || []
+                };
+
+                const verifyRes = await fetch('/auth/passkey/register/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ credential: credentialJSON })
+                });
+                
+                const result = await verifyRes.json();
+                if (result.success) {
+                    window.location.href = '/';
+                } else {
+                    showStatus(result.error || 'Registration failed', true);
+                }
+            } catch (e) {
+                showStatus(e.message, true);
+            }
+            registerBtn.disabled = false;
+        };
+
+        loginBtn.onclick = async () => {
+            loginBtn.disabled = true;
+            try {
+                const optRes = await fetch('/auth/passkey/login/options', { method: 'POST' });
+                const options = await optRes.json();
+                
+                options.challenge = base64urlToBuffer(options.challenge);
+
+                const credential = await navigator.credentials.get({ publicKey: options });
+                
+                const credentialJSON = {
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                        authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+                        signature: bufferToBase64url(credential.response.signature),
+                        userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null
+                    }
+                };
+
+                const verifyRes = await fetch('/auth/passkey/login/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ credential: credentialJSON })
+                });
+                
+                const result = await verifyRes.json();
+                if (result.success) {
+                    window.location.href = result.requires_2fa ? '/2fa-verify' : '/';
+                } else {
+                    showStatus(result.error || 'Login failed', true);
+                }
+            } catch (e) {
+                showStatus(e.message, true);
+            }
+            loginBtn.disabled = false;
+        };
+
+        checkPasskeys();
+    </script>
+</body>
+</html>
