@@ -136,3 +136,5 @@ yarn-error.log*
 .envrc
 
 venv-pass0/
+
+*.db-journal
